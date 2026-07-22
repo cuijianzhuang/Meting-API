@@ -15,7 +15,7 @@ const parseCookieString = (cookieString) => {
 
 const checkNeteaseVipAbility = async (cookieString) => {
     try {
-        const testSongId = '22704470'
+        const testSongId = '254059'
         const data = {
             ids: '[' + testSongId + ']',
             level: 'standard',
@@ -70,7 +70,7 @@ const checkTencentVipAbility = async (cookieString) => {
         const cookie = parseCookieString(cookieString)
         const uin = cookie.uin || ''
         const qqmusic_key = cookie.qqmusic_key || ''
-        const testSongId = '004Yi5BD3ksoAN'
+        const testSongId = '0010BrWk2SucQr'
         
         const data = {
             data: JSON.stringify({

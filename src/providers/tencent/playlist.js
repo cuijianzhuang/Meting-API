@@ -41,7 +41,7 @@ const get_playlist = async (id, cookie = '') => {
     let jsonp
     if (config.OVERSEAS) {
         const ids = result.map(song => song.songmid)
-        jsonp = await get_song_url(ids.join(','), cookie)
+        jsonp = (await get_song_url(ids.join(','), cookie))?.url || ''
     }
     const res = await Promise.all(result.map(async song => {
         let song_info = {

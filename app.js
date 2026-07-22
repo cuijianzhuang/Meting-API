@@ -385,6 +385,34 @@ app.get('/', (c) => {
         .tag-json { background: var(--success-bg); color: var(--success); }
         .tag-text { background: var(--primary-bg); color: var(--primary); }
         .tag-redirect { background: var(--warning-bg); color: var(--warning); }
+        .tag-vip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 7px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.4;
+            margin: 1px 2px;
+        }
+        .tag-netease-vip { background: #e53935; color: #fff; }
+        .tag-netease-svip { background: #212121; color: #fff; }
+        .tag-qq-vip { background: #43a047; color: #fff; }
+        .tag-qq-svip { background: #f5c518; color: #1a1a1a; }
+        .tag-vip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 7px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.4;
+            margin: 1px 2px;
+        }
+        .tag-netease-vip { background: #e53935; color: #fff; }
+        .tag-netease-svip { background: #1a1a1a; color: #fff; }
+        .tag-qq-vip { background: #43a047; color: #fff; }
+        .tag-qq-svip { background: #f5c518; color: #1a1a1a; }
         .section-subtitle {
             font-size: 14px;
             font-weight: 700;
@@ -475,7 +503,7 @@ app.get('/', (c) => {
             <div class="info-grid">
                 <div class="info-item">
                     <div class="info-label">版本</div>
-                    <div class="info-value">2.0.0</div>
+                    <div class="info-value">3.0.0</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">运行环境</div>
@@ -536,7 +564,7 @@ app.get('/', (c) => {
                 <span class="api-path">/api</span>
             </div>
 
-            <div class="section-subtitle">📋 请求参数</div>
+<div class="section-subtitle">📋 请求参数</div>
             <table class="param-table">
                 <thead>
                     <tr><th>参数名</th><th>类型</th><th>必填</th><th>默认值</th><th>说明</th></tr>
@@ -547,207 +575,352 @@ app.get('/', (c) => {
                         <td><span class="param-type">string</span></td>
                         <td><span class="param-optional">否</span></td>
                         <td><span class="param-default">netease</span></td>
-                        <td>音乐平台，可选值：<code>netease</code>（网易云音乐）、<code>tencent</code>（QQ音乐）</td>
+                        <td><code>netease</code> / <code>tencent</code></td>
                     </tr>
                     <tr>
                         <td><span class="param-name">type</span></td>
                         <td><span class="param-type">string</span></td>
                         <td><span class="param-optional">否</span></td>
                         <td><span class="param-default">playlist</span></td>
-                        <td>请求类型，可选值见下方支持矩阵</td>
+                        <td>见下方类型表</td>
                     </tr>
                     <tr>
                         <td><span class="param-name">id</span></td>
                         <td><span class="param-type">string</span></td>
                         <td><span class="param-optional">否</span></td>
                         <td><span class="param-default">6907557348</span></td>
-                        <td>资源ID，如歌单ID、歌曲ID、歌手ID；<code>search</code> / <code>search_playlist</code> 时填搜索关键词；<code>fm</code> 时填漫游模式（可选）</td>
+                        <td>资源 ID 或关键词（随 type 变化）</td>
                     </tr>
                     <tr>
                         <td><span class="param-name">quality</span></td>
                         <td><span class="param-type">string</span></td>
                         <td><span class="param-optional">否</span></td>
                         <td><span class="param-default">standard</span></td>
-                        <td>音质档位，仅影响 <code>type=url</code> 及返回结果中的播放链接；不传时保持默认行为</td>
+                        <td>音质，仅影响播放链接</td>
                     </tr>
                 </tbody>
             </table>
 
-            <div class="section-subtitle">🎚️ 音质参数（quality）</div>
+            <div class="section-subtitle">🎚️ 音质（quality）</div>
+            <div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;line-height:1.7;">
+                仅 <code>type=url</code> 生效。斜杠两侧为同义别名（如 <code>flac</code> = <code>lossless</code>）。会员不够或歌曲无该档时自动降级。<br>
+                网易：高清臻音及以下多为 <span class="tag-vip tag-netease-vip">仅网易 VIP</span>，以上需 <span class="tag-vip tag-netease-svip">仅网易 SVIP</span>。<br>
+                QQ：SQ / HQ 需 <span class="tag-vip tag-qq-vip">仅 QQ VIP</span>，臻品母带 / 臻品全景声需 <span class="tag-vip tag-qq-svip">仅 QQ SVIP</span>。
+            </div>
             <table class="param-table">
                 <thead>
-                    <tr><th>quality 值</th><th>网易云 (netease)</th><th>QQ音乐 (tencent)</th></tr>
+                    <tr><th>quality 参数值</th><th>网易云</th><th>QQ音乐</th><th>备注</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td><span class="param-name">128</span> / <span class="param-name">standard</span></td><td>标准音质</td><td>128kbps MP3</td></tr>
-                    <tr><td><span class="param-name">320</span> / <span class="param-name">exhigh</span></td><td>极高音质</td><td>320kbps MP3</td></tr>
-                    <tr><td><span class="param-name">flac</span> / <span class="param-name">lossless</span></td><td>无损</td><td>无损 FLAC</td></tr>
-                    <tr><td><span class="param-name">higher</span></td><td>较高音质</td><td><span class="cross">✗</span></td></tr>
-                    <tr><td><span class="param-name">hires</span></td><td>Hi-Res</td><td><span class="cross">✗</span></td></tr>
+                    <tr>
+                        <td><span class="param-name">128</span> / <span class="param-name">standard</span></td>
+                        <td>标准</td>
+                        <td>标准品质</td>
+                        <td>默认</td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">higher</span></td>
+                        <td>较高</td>
+                        <td><span class="cross">✗</span></td>
+                        <td>仅网易</td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">320</span> / <span class="param-name">exhigh</span></td>
+                        <td>极高</td>
+                        <td>HQ高品质</td>
+                        <td>
+                            <span class="tag-vip tag-netease-vip">仅网易 VIP</span>
+                            <span class="tag-vip tag-qq-vip">仅 QQ VIP</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">flac</span> / <span class="param-name">lossless</span></td>
+                        <td>无损</td>
+                        <td>SQ无损品质</td>
+                        <td>
+                            <span class="tag-vip tag-netease-vip">仅网易 VIP</span>
+                            <span class="tag-vip tag-qq-vip">仅 QQ VIP</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">hires</span></td>
+                        <td>高解析度无损</td>
+                        <td><span class="cross">✗</span></td>
+                        <td>曲目需有 Hi-Res；<span class="tag-vip tag-netease-vip">仅网易 VIP</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">jyeffect</span></td>
+                        <td>高清臻音</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="tag-vip tag-netease-vip">仅网易 VIP</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">sky</span></td>
+                        <td>沉浸环绕声</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="tag-vip tag-netease-svip">仅网易 SVIP</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">jymaster</span></td>
+                        <td>超清母带</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="tag-vip tag-netease-svip">仅网易 SVIP</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">dolby</span></td>
+                        <td>杜比全景声</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="tag-vip tag-netease-svip">仅网易 SVIP</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">atmos</span></td>
+                        <td><span class="cross">✗</span></td>
+                        <td>臻品全景声</td>
+                        <td><span class="tag-vip tag-qq-svip">仅 QQ SVIP</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="param-name">master</span></td>
+                        <td><span class="cross">✗</span></td>
+                        <td>臻品母带</td>
+                        <td><span class="tag-vip tag-qq-svip">仅 QQ SVIP</span></td>
+                    </tr>
                 </tbody>
             </table>
-            <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;">实际可获取的音质取决于 Cookie、会员权限及歌曲版权；非法 <code>quality</code> 值将返回 400</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;line-height:1.7;">
+                <code>type=url</code> 默认返回 JSON：<code>{"url","quality"}</code>（实际音质中文名）。需要 302 时追加 <code>&amp;redirect=1</code>。
+            </div>
 
-            <div class="section-subtitle">🔢 类型支持矩阵</div>
+            <div class="section-subtitle">🔢 类型一览</div>
             <table class="param-table">
                 <thead>
-                    <tr><th>type 值</th><th>说明</th><th>netease</th><th>tencent</th></tr>
+                    <tr><th>分类</th><th>type</th><th>id</th><th>netease</th><th>tencent</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td><span class="param-name">song</span></td><td>单曲信息</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">playlist</span></td><td>歌单</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">artist</span></td><td>歌手歌曲</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
-                    <tr><td><span class="param-name">search</span></td><td>单曲搜索</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">search_playlist</span></td><td>歌单搜索（id 填关键词）</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">fm</span></td><td>私人漫游（id 填模式，留空为默认漫游）</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
-                    <tr><td><span class="param-name">url</span></td><td>播放链接</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">lrc</span></td><td>歌词</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">pic</span></td><td>封面图片</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td rowspan="3">曲目</td><td><span class="param-name">song</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">playlist</span></td><td>歌单 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">artist</span></td><td>歌手 ID</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td rowspan="3">搜索</td><td><span class="param-name">search</span></td><td>关键词</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">search_playlist</span></td><td>关键词</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">search_dj</span></td><td>关键词</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td rowspan="4">电台</td><td><span class="param-name">dj</span></td><td>电台 ID</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td><span class="param-name">dj_detail</span></td><td>电台 ID</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td><span class="param-name">djprogram</span></td><td>节目 ID</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td><span class="param-name">dj_hot</span></td><td>hot / recommend</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td>漫游</td><td><span class="param-name">fm</span></td><td>模式（可空）</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td rowspan="3">媒体</td><td><span class="param-name">url</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">lrc</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">pic</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
                 </tbody>
             </table>
 
             <div class="section-subtitle">📨 请求示例</div>
-            <div class="code-label">获取歌单 <span class="tag tag-text">URL</span></div>
-            <div class="code-block">
-                <button class="copy-btn" onclick="copyCode(this)">复制</button>
-                <pre>${baseUrl}api?server=netease&type=playlist&id=6907557348
-${baseUrl}api?server=tencent&type=playlist&id=7326220405</pre>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab(event, 'ex-music')">曲目</button>
+                <button class="tab-btn" onclick="switchTab(event, 'ex-search')">搜索</button>
+                <button class="tab-btn" onclick="switchTab(event, 'ex-dj')">电台</button>
+                <button class="tab-btn" onclick="switchTab(event, 'ex-fm')">漫游</button>
+                <button class="tab-btn" onclick="switchTab(event, 'ex-media')">媒体</button>
             </div>
-            <div class="code-label">搜索单曲 <span class="tag tag-text">URL</span></div>
-            <div class="code-block">
-                <button class="copy-btn" onclick="copyCode(this)">复制</button>
-                <pre>${baseUrl}api?server=netease&type=search&id=风筝误
-${baseUrl}api?server=tencent&type=search&id=风筝误</pre>
+
+            <div class="tab-content active" id="ex-music">
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                    <pre># 网易云：获取歌单内歌曲列表（返回 JSON）
+${baseUrl}api?server=netease&type=playlist&id=6907557348
+
+# 网易云：获取单曲信息（返回 JSON）
+${baseUrl}api?server=netease&type=song&id=254059
+
+# 网易云：获取歌手热门歌曲（返回 JSON）
+${baseUrl}api?server=netease&type=artist&id=12441107
+
+# QQ音乐：获取歌单内歌曲列表（返回 JSON）
+${baseUrl}api?server=tencent&type=playlist&id=7326220405
+
+# QQ音乐：获取单曲信息（返回 JSON）
+${baseUrl}api?server=tencent&type=song&id=0010BrWk2SucQr</pre>
+                </div>
             </div>
-            <div class="code-label">搜索歌单（中文关键词） <span class="tag tag-text">URL</span></div>
-            <div class="code-block">
-                <button class="copy-btn" onclick="copyCode(this)">复制</button>
-                <pre>${baseUrl}api?server=netease&type=search_playlist&id=流行
+
+            <div class="tab-content" id="ex-search">
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                    <pre># 网易云：按关键词搜索单曲（id 填关键词）
+${baseUrl}api?server=netease&type=search&id=风筝误
+
+# 网易云：按关键词搜索歌单
+${baseUrl}api?server=netease&type=search_playlist&id=流行
+
+# 网易云：按关键词搜索电台（仅网易云）
+${baseUrl}api?server=netease&type=search_dj&id=代码时间
+
+# QQ音乐：按关键词搜索单曲
+${baseUrl}api?server=tencent&type=search&id=风筝误
+
+# QQ音乐：按关键词搜索歌单
 ${baseUrl}api?server=tencent&type=search_playlist&id=抖音热歌</pre>
+                </div>
             </div>
-            <div class="code-label">私人漫游 <span class="tag tag-text">URL</span></div>
-            <div class="code-block">
-                <button class="copy-btn" onclick="copyCode(this)">复制</button>
-                <pre>${baseUrl}api?server=netease&type=fm
+
+            <div class="tab-content" id="ex-dj">
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                    <pre># 获取电台下的节目列表（可播放；id = 电台 ID）
+${baseUrl}api?server=netease&type=dj&id=336355127
+
+# 获取电台详情（封面、简介等；id = 电台 ID）
+${baseUrl}api?server=netease&type=dj_detail&id=336355127
+
+# 获取单集节目详情（可播放；id = 节目 ID）
+${baseUrl}api?server=netease&type=djprogram&id=1367665101
+
+# 热门电台列表（id 固定写 hot）
+${baseUrl}api?server=netease&type=dj_hot&id=hot
+
+# 推荐电台列表（id 固定写 recommend）
+${baseUrl}api?server=netease&type=dj_hot&id=recommend</pre>
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;">仅网易云。<code>dj</code> / <code>djprogram</code> 可播放；其余列表项的 <code>url</code> 指向 <code>type=dj</code></div>
+            </div>
+
+            <div class="tab-content" id="ex-fm">
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                    <pre># 私人漫游 · 默认模式（不传 id 等同 DEFAULT）
+${baseUrl}api?server=netease&type=fm
+
+# 私人漫游 · 熟悉模式
 ${baseUrl}api?server=netease&type=fm&id=FAMILIAR
+
+# 私人漫游 · 探索模式
+${baseUrl}api?server=netease&type=fm&id=EXPLORE
+
+# 私人漫游 · AI DJ
+${baseUrl}api?server=netease&type=fm&id=aidj
+
+# 私人漫游 · 场景模式（专注；还可换 EXERCISE / NIGHT_EMO）
 ${baseUrl}api?server=netease&type=fm&id=SCENE_RCMD:FOCUS</pre>
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;line-height:1.7;">
+                    模式：<code>DEFAULT</code>（可空）/ <code>FAMILIAR</code> / <code>EXPLORE</code> / <code>aidj</code> / <code>SCENE_RCMD</code><br>
+                    场景子模式：<code>SCENE_RCMD:EXERCISE</code> / <code>FOCUS</code> / <code>NIGHT_EMO</code>。需登录 Cookie 才有个性化推荐。
+                </div>
             </div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;line-height:1.7;">
-                <code>fm</code> 的 <code>id</code> 对应客户端「私人漫游」模式，留空等同 <code>DEFAULT</code>。需登录 Cookie 才能获得个性化推荐。
-                <table class="param-table" style="margin-top:10px;font-size:12px;">
-                    <thead><tr><th>id 值</th><th>说明</th></tr></thead>
-                    <tbody>
-                        <tr><td><span class="param-name">留空 / DEFAULT</span></td><td>默认漫游：综合听歌记录做常规个性化推荐</td></tr>
-                        <tr><td><span class="param-name">FAMILIAR</span></td><td>熟悉模式：多推收藏、常听、关注过的歌手与相似曲风</td></tr>
-                        <tr><td><span class="param-name">EXPLORE</span></td><td>探索模式：多推较少听过的新歌、冷门歌，拓展曲库</td></tr>
-                        <tr><td><span class="param-name">SCENE_RCMD</span></td><td>场景漫游：按生活场景推荐（建议配合子模式）</td></tr>
-                        <tr><td><span class="param-name">aidj</span></td><td>AI DJ：AI 串烧混剪，歌曲之间带过渡衔接</td></tr>
-                    </tbody>
-                </table>
-                <div style="margin-top:8px;"><strong>SCENE_RCMD 子模式</strong>（id 格式 <code>SCENE_RCMD:子模式</code>）：</div>
-                <table class="param-table" style="margin-top:6px;font-size:12px;">
-                    <thead><tr><th>子模式</th><th>说明</th></tr></thead>
-                    <tbody>
-                        <tr><td><span class="param-name">EXERCISE</span></td><td>运动：节奏明快、适合锻炼</td></tr>
-                        <tr><td><span class="param-name">FOCUS</span></td><td>专注：适合工作、学习，偏轻音乐/纯音乐</td></tr>
-                        <tr><td><span class="param-name">NIGHT_EMO</span></td><td>深夜：适合夜晚、情绪向的慢歌</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="code-label">获取播放链接（指定音质） <span class="tag tag-text">URL</span></div>
-            <div class="code-block">
-                <button class="copy-btn" onclick="copyCode(this)">复制</button>
-                <pre>${baseUrl}api?server=netease&type=url&id=22704470&quality=lossless
-${baseUrl}api?server=tencent&type=url&id=004Yi5BD3ksoAN&quality=320</pre>
+
+            <div class="tab-content" id="ex-media">
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                    <pre># 网易云：获取播放链接 · 无损（flac 与 lossless 等价；302 跳转）
+${baseUrl}api?server=netease&type=url&id=254059&quality=lossless
+
+# 网易云：获取播放链接 · 超清母带（需 SVIP；不够会降级）
+${baseUrl}api?server=netease&type=url&id=254059&quality=jymaster
+
+# 网易云：获取播放链接 · 沉浸环绕声（需 SVIP；不够会降级）
+${baseUrl}api?server=netease&type=url&id=254059&quality=sky
+
+# 网易云：获取歌词（纯文本）
+${baseUrl}api?server=netease&type=lrc&id=254059
+
+# 网易云：获取封面（302 跳转）
+${baseUrl}api?server=netease&type=pic&id=254059
+
+# QQ音乐：获取播放链接 · 无损 FLAC（flac 与 lossless 等价）
+${baseUrl}api?server=tencent&type=url&id=0010BrWk2SucQr&quality=flac
+
+# QQ音乐：获取播放链接 · 臻品全景声（需 SVIP；不够会降级）
+${baseUrl}api?server=tencent&type=url&id=0010BrWk2SucQr&quality=atmos
+
+# QQ音乐：获取播放链接 · 臻品母带（需 SVIP；不够会降级）
+${baseUrl}api?server=tencent&type=url&id=0010BrWk2SucQr&quality=master
+
+# 需要 302 直链时（给播放器 / MetingJS）追加 redirect=1
+${baseUrl}api?server=tencent&type=url&id=0010BrWk2SucQr&quality=flac&redirect=1</pre>
+                </div>
             </div>
 
             <div class="section-subtitle">✅ 响应示例</div>
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab(event, 'tab-song')">song / playlist / search</button>
-                <button class="tab-btn" onclick="switchTab(event, 'tab-search-playlist')">search_playlist</button>
-                <button class="tab-btn" onclick="switchTab(event, 'tab-url')">url</button>
+                <button class="tab-btn active" onclick="switchTab(event, 'tab-track')">曲目 JSON</button>
+                <button class="tab-btn" onclick="switchTab(event, 'tab-list')">列表 JSON</button>
+                <button class="tab-btn" onclick="switchTab(event, 'tab-url')">url / pic</button>
                 <button class="tab-btn" onclick="switchTab(event, 'tab-lrc')">lrc</button>
-                <button class="tab-btn" onclick="switchTab(event, 'tab-pic')">pic</button>
             </div>
 
-            <div class="tab-content active" id="tab-song">
-                <div class="code-label">成功响应 <span class="tag tag-json">JSON</span> <span style="color:var(--success);font-weight:700;">200</span></div>
+            <div class="tab-content active" id="tab-track">
+                <div class="code-label">song / playlist / search / dj / djprogram / fm <span class="tag tag-json">JSON</span></div>
                 <div class="code-block">
                     <button class="copy-btn" onclick="copyCode(this)">复制</button>
                     <pre>[
   {
-    "name": "歌曲名称",
-    "artist": "歌手名",
-    "url": "https://example.com/api?server=netease&type=url&id=xxx&quality=320",
-    "pic": "https://example.com/api?server=netease&type=pic&id=xxx",
-    "lrc": "https://example.com/api?server=netease&type=lrc&id=xxx",
-    "id": "473403185"
+    "title": "歌曲名称",
+    "author": "歌手名",
+    "url": "${baseUrl}api?server=netease&type=url&id=xxx",
+    "pic": "${baseUrl}api?server=netease&type=pic&id=xxx",
+    "lrc": "${baseUrl}api?server=netease&type=lrc&id=xxx"
   }
 ]</pre>
                 </div>
             </div>
 
-            <div class="tab-content" id="tab-search-playlist">
-                <div class="code-label">成功响应 <span class="tag tag-json">JSON</span> <span style="color:var(--success);font-weight:700;">200</span></div>
+            <div class="tab-content" id="tab-list">
+                <div class="code-label">search_playlist / search_dj / dj_hot / dj_detail <span class="tag tag-json">JSON</span></div>
                 <div class="code-block">
                     <button class="copy-btn" onclick="copyCode(this)">复制</button>
                     <pre>[
   {
-    "title": "歌单名称",
-    "author": "创建者",
+    "title": "名称",
+    "author": "作者 / 主播",
     "pic": "https://example.com/cover.jpg",
-    "id": "8596628206",
-    "url": "https://example.com/api?server=netease&type=playlist&id=8596628206",
-    "trackCount": 452
+    "id": "336355127",
+    "url": "${baseUrl}api?server=netease&type=dj&id=336355127",
+    "trackCount": 36
   }
 ]</pre>
                 </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;">歌单搜索的 <code>url</code> 指向 <code>type=playlist</code>；电台相关指向 <code>type=dj</code></div>
             </div>
 
             <div class="tab-content" id="tab-url">
-                <div class="code-label">成功响应 <span class="tag tag-redirect">302 Redirect</span></div>
+                <div class="code-label">type=url 默认 JSON <span class="tag tag-json">JSON</span></div>
                 <div class="code-block">
                     <button class="copy-btn" onclick="copyCode(this)">复制</button>
-                    <pre>HTTP/1.1 302 Found
-Location: https://music.example.com/song.mp3</pre>
+                    <pre>{
+  "url": "https://music.example.com/song.flac",
+  "quality": "无损"
+}</pre>
                 </div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;">当 url 以 <code>@</code> 开头时，直接返回文本内容而非重定向</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;line-height:1.7;">
+                    <code>quality</code> 为<strong>实际拿到</strong>的音质中文名（请求档不可用时会自动降级）。<br>
+                    追加 <code>&amp;redirect=1</code> 时改为 302 跳转到 <code>url</code>（兼容播放器 / MetingJS）。<br>
+                    url 以 <code>@</code> 开头时返回纯文本，不重定向。
+                </div>
             </div>
 
             <div class="tab-content" id="tab-lrc">
-                <div class="code-label">成功响应 <span class="tag tag-text">Text</span> <span style="color:var(--success);font-weight:700;">200</span></div>
+                <div class="code-label">纯文本歌词 <span class="tag tag-text">Text</span></div>
                 <div class="code-block">
                     <button class="copy-btn" onclick="copyCode(this)">复制</button>
                     <pre>[00:00.00] 作词 : 某某
 [00:01.00] 作曲 : 某某
-[00:10.50]第一行歌词
-[00:15.30]第二行歌词</pre>
-                </div>
-            </div>
-
-            <div class="tab-content" id="tab-pic">
-                <div class="code-label">成功响应 <span class="tag tag-redirect">302 Redirect</span></div>
-                <div class="code-block">
-                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
-                    <pre>HTTP/1.1 302 Found
-Location: https://img.example.com/cover.jpg</pre>
+[00:10.50]第一行歌词</pre>
                 </div>
             </div>
 
             <div class="section-subtitle">❌ 错误响应</div>
             <table class="error-table">
                 <thead>
-                    <tr><th>状态码</th><th>说明</th><th>响应示例</th></tr>
+                    <tr><th>状态码</th><th>说明</th><th>示例</th></tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td><span class="error-code error-400">400</span></td>
-                        <td>参数不合法（server、type 或 quality 不在支持范围内）</td>
-                        <td><code>{"status":400,"message":"server 参数不合法","param":{"server":"xxx","type":"song","id":"123"}}</code><br><code>{"status":400,"message":"quality 参数不合法","param":{"server":"netease","quality":"invalid"}}</code></td>
+                        <td>server / type / quality 不合法</td>
+                        <td><code>{"status":400,"message":"server 参数不合法",...}</code></td>
                     </tr>
                     <tr>
                         <td><span class="error-code error-403">403</span></td>
-                        <td>无法获取播放链接（Cookie 无效或资源不可用）</td>
+                        <td>无法获取播放链接</td>
                         <td><code>{"error":"no url"}</code></td>
                     </tr>
                 </tbody>
@@ -766,10 +939,14 @@ Location: https://img.example.com/cover.jpg</pre>
         });
     }
     function switchTab(e, tabId) {
-        e.target.closest('.tabs').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        const tabs = e.target.closest('.tabs');
+        tabs.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         e.target.classList.add('active');
-        const card = e.target.closest('.card');
-        card.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        let el = tabs.nextElementSibling;
+        while (el && !el.classList.contains('section-subtitle')) {
+            if (el.classList && el.classList.contains('tab-content')) el.classList.remove('active');
+            el = el.nextElementSibling;
+        }
         document.getElementById(tabId).classList.add('active');
     }
     </script>

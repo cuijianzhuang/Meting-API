@@ -1,14 +1,33 @@
 import { changeUrlQuery } from "./util.js"
 import config from "../../config.js"
+import { buildUrlPayload } from "../../quality.js"
 
+/**
+ * QQ 音乐音质前缀（对齐官方档位）
+ * filename：{前缀}{songmid}{media_mid}{后缀}
+ * 标准品质 M500 / HQ高品质 M800 / SQ无损 F000 /
+ * 臻品全景声 Q000 / 臻品母带 AI00
+ * 官方另有 dtsX（音效）、NAC（省流），本 API 不提供
+ */
 const QUALITY_MAP = {
-    '128': { s: 'M500', e: '.mp3' },
-    'standard': { s: 'M500', e: '.mp3' },
-    '320': { s: 'M800', e: '.mp3' },
-    'exhigh': { s: 'M800', e: '.mp3' },
-    'flac': { s: 'F000', e: '.flac' },
-    'lossless': { s: 'F000', e: '.flac' },
+    '128': { s: 'M500', e: '.mp3', sizeKey: 'size_128mp3' },
+    'standard': { s: 'M500', e: '.mp3', sizeKey: 'size_128mp3' },
+    '320': { s: 'M800', e: '.mp3', sizeKey: 'size_320mp3' },
+    'exhigh': { s: 'M800', e: '.mp3', sizeKey: 'size_320mp3' },
+    'flac': { s: 'F000', e: '.flac', sizeKey: 'size_flac' },
+    'lossless': { s: 'F000', e: '.flac', sizeKey: 'size_flac' },
+    'atmos': { s: 'Q000', e: '.flac', sizeKey: 'size_dolby', sizeNewIndex: 1 },
+    'master': { s: 'AI00', e: '.flac', sizeNewIndex: 0 },
 }
+
+/** 由高到低：臻品母带 → 臻品全景声 → SQ → HQ → 标准 */
+const FALLBACK_CHAIN = [
+    'master',
+    'atmos',
+    'flac',
+    'exhigh',
+    'standard',
+]
 
 const resolveQuality = (quality) => {
     if (!quality) return QUALITY_MAP['128']
@@ -19,50 +38,93 @@ const parseCookieString = (cookieString) => {
     if (!cookieString) return {}
     const cookies = {}
     cookieString.split(';').forEach(item => {
-        const [key, value] = item.trim().split('=')
-        if (key && value) {
-            cookies[key] = value
-        }
+        const idx = item.indexOf('=')
+        if (idx <= 0) return
+        const key = item.slice(0, idx).trim()
+        const value = item.slice(idx + 1).trim()
+        if (key && value) cookies[key] = value
     })
     return cookies
 }
 
-export const get_song_url = async (id, cookie = '', options = {}) => {
+const get_track_file = async (songmid) => {
+    try {
+        const data = {
+            data: JSON.stringify({
+                songinfo: {
+                    method: 'get_song_detail_yqq',
+                    module: 'music.pf_song_detail_svr',
+                    param: { song_mid: songmid },
+                },
+            }),
+        }
+        const url = changeUrlQuery(data, 'https://u.y.qq.com/cgi-bin/musicu.fcg')
+        const result = await (await fetch(url)).json()
+        return result?.songinfo?.data?.track_info?.file || null
+    } catch {
+        return null
+    }
+}
 
-    id = id.split(',')
-    const cookieObj = parseCookieString(cookie)
-    let uin = cookieObj.uin || ''
-    let qqmusic_key = cookieObj.qqmusic_key || ''
-    const typeObj = resolveQuality(options.quality)
+const hasQualityFile = (file, qualityKey) => {
+    if (!file) return true // 拿不到详情时不拦截，交给 vkey / CDN 校验
+    const q = QUALITY_MAP[qualityKey]
+    if (!q) return false
+    if (q.sizeKey && Number(file[q.sizeKey]) > 0) return true
+    if (typeof q.sizeNewIndex === 'number') {
+        const sizeNew = file.size_new
+        if (Array.isArray(sizeNew) && Number(sizeNew[q.sizeNewIndex]) > 0) return true
+    }
+    // 有明确 size 字段且为 0，则判定无此音质
+    if (q.sizeKey && file[q.sizeKey] !== undefined) return Number(file[q.sizeKey]) > 0
+    if (typeof q.sizeNewIndex === 'number') {
+        const sizeNew = file.size_new
+        if (Array.isArray(sizeNew)) return Number(sizeNew[q.sizeNewIndex] || 0) > 0
+    }
+    return true
+}
 
-    const file = id.map(e => `${typeObj.s}${e}${e}${typeObj.e}`)
-    const guid = (Math.random() * 10000000).toFixed(0);
+const buildFallbackLevels = (requestedKey) => {
+    const key = requestedKey.toLowerCase()
+    const alias = {
+        '128': 'standard',
+        '320': 'exhigh',
+        'lossless': 'flac',
+    }
+    const normalized = alias[key] || key
+    const idx = FALLBACK_CHAIN.indexOf(normalized)
+    if (idx === -1) return [normalized, 'flac', 'exhigh', 'standard']
+    return FALLBACK_CHAIN.slice(idx)
+}
 
-    let purl = '';
+const fetchVkeyUrl = async (songmid, mediaMid, typeObj, uin, authst) => {
+    const filename = [`${typeObj.s}${songmid}${mediaMid}${typeObj.e}`]
+    const guid = (Math.random() * 10000000).toFixed(0)
 
-    let data = {
+    const data = {
         req_0: {
             module: 'vkey.GetVkeyServer',
             method: 'CgiGetVkey',
             param: {
-                guid: guid,
-                songmid: id,
+                filename,
+                guid,
+                songmid: [songmid],
                 songtype: [0],
-                uin: uin,
+                uin,
                 loginflag: 1,
                 platform: '20',
             },
         },
         comm: {
-            uin: uin,
+            uin,
             format: 'json',
             ct: 19,
             cv: 0,
-            authst: qqmusic_key,
+            authst,
         },
     }
 
-    let params = {
+    const params = {
         '-': 'getplaysongvkey',
         g_tk: 5381,
         loginUin: uin,
@@ -75,33 +137,131 @@ export const get_song_url = async (id, cookie = '', options = {}) => {
         data: JSON.stringify(data),
     }
 
-
-    if (config.OVERSEAS || id.length > 1) {
+    if (config.OVERSEAS) {
         params.format = 'jsonp'
         const callback_function_name = 'callback'
-        const callback_name = "callback"
-        const parse_function = "qq_get_url_from_json"
+        const callback_name = 'callback'
+        const parse_function = 'qq_get_url_from_json'
         const url = changeUrlQuery(params, 'https://u.y.qq.com/cgi-bin/musicu.fcg')
-        return "@" + parse_function + '@' + callback_name + '@' + callback_function_name + '@' + url
+        return { overseas: true, url: '@' + parse_function + '@' + callback_name + '@' + callback_function_name + '@' + url }
     }
 
-
     const url = changeUrlQuery(params, 'https://u.y.qq.com/cgi-bin/musicu.fcg')
+    const result = await (await fetch(url)).json()
+    const info = result?.req_0?.data?.midurlinfo?.[0]
+    const purl = info?.purl || ''
 
-    let result = await fetch(url);
-
-    result = await result.json()
-    if (result.req_0 && result.req_0.data && result.req_0.data.midurlinfo) {
-        purl = result.req_0.data.midurlinfo[0].purl;
+    // 104003 无权限；空 purl；或 result 非 0 都视为失败
+    if (!purl || (info?.result !== undefined && info.result !== 0)) {
+        return { url: '' }
     }
 
     const domain =
         result.req_0.data.sip.find(i => !i.startsWith('http://ws')) ||
-        result.req_0.data.sip[0];
+        result.req_0.data.sip[0]
 
-    const res = `${domain}${purl}`.replace('http://', 'https://')
-    return res;
+    return { url: `${domain}${purl}`.replace('http://', 'https://') }
+}
 
+/** QQ 对不存在的高音质有时仍返回 purl，需探测 CDN 是否真实可播 */
+const isPlayableUrl = async (url) => {
+    if (!url || url.startsWith('@')) return !!url
+    try {
+        const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+                Range: 'bytes=0-1',
+                Referer: 'https://y.qq.com/',
+                'User-Agent': 'Mozilla/5.0',
+            },
+        })
+        return res.status === 200 || res.status === 206
+    } catch {
+        return false
+    }
+}
+
+export const get_song_url = async (id, cookie = '', options = {}) => {
+    const ids = id.split(',')
+    const cookieObj = parseCookieString(cookie)
+    const uin = cookieObj.uin || cookieObj.wxuin || ''
+    const authst = cookieObj.qqmusic_key || cookieObj.qm_keyst || ''
+    const requested = (options.quality || '128').toLowerCase()
+    const levels = buildFallbackLevels(requested)
+
+    // 批量时保持旧行为（海外 JSONP 或多 id）
+    if (config.OVERSEAS || ids.length > 1) {
+        const typeObj = resolveQuality(requested)
+        const mediaMids = await Promise.all(ids.map(async (mid) => {
+            const file = await get_track_file(mid)
+            return file?.media_mid || mid
+        }))
+        const filename = ids.map((mid, i) => `${typeObj.s}${mid}${mediaMids[i]}${typeObj.e}`)
+        const guid = (Math.random() * 10000000).toFixed(0)
+        const data = {
+            req_0: {
+                module: 'vkey.GetVkeyServer',
+                method: 'CgiGetVkey',
+                param: {
+                    filename,
+                    guid,
+                    songmid: ids,
+                    songtype: new Array(ids.length).fill(0),
+                    uin,
+                    loginflag: 1,
+                    platform: '20',
+                },
+            },
+            comm: { uin, format: 'json', ct: 19, cv: 0, authst },
+        }
+        const params = {
+            '-': 'getplaysongvkey',
+            g_tk: 5381,
+            loginUin: uin,
+            hostUin: 0,
+            format: 'jsonp',
+            inCharset: 'utf8',
+            outCharset: 'utf-8¬ice=0',
+            platform: 'yqq.json',
+            needNewCode: 0,
+            data: JSON.stringify(data),
+        }
+        const url = changeUrlQuery(params, 'https://u.y.qq.com/cgi-bin/musicu.fcg')
+        return buildUrlPayload('@qq_get_url_from_json@callback@callback@' + url, requested, requested, 'tencent')
+    }
+
+    const songmid = ids[0]
+    const file = await get_track_file(songmid)
+    const mediaMid = file?.media_mid || songmid
+
+    for (const level of levels) {
+        const typeObj = QUALITY_MAP[level]
+        if (!typeObj) continue
+        if (!hasQualityFile(file, level)) {
+            console.log(`[tencent] quality ${level} not in file meta for ${songmid}, skip`)
+            continue
+        }
+
+        try {
+            const { url } = await fetchVkeyUrl(songmid, mediaMid, typeObj, uin, authst)
+            if (!url) continue
+
+            const ok = await isPlayableUrl(url)
+            if (!ok) {
+                console.log(`[tencent] quality ${level} vkey ok but CDN unusable for ${songmid}`)
+                continue
+            }
+
+            if (QUALITY_MAP[requested]?.s !== typeObj.s) {
+                console.log(`[tencent] quality ${requested} unavailable for ${songmid}, fallback to ${level}`)
+            }
+            return buildUrlPayload(url, level, requested, 'tencent')
+        } catch (e) {
+            console.error(`[tencent] fetch url level=${level} failed:`, e?.message || e)
+        }
+    }
+
+    return null
 }
 
 export const get_song_info = async (id, cookie = '') => {
@@ -129,7 +289,7 @@ export const get_song_info = async (id, cookie = '') => {
         author: result.track_info.singer.reduce((i, v) => ((i ? i + " / " : i) + v.name), ''),
         title: result.track_info.name,
         pic: `https://y.gtimg.cn/music/photo_new/T002R300x300M000${result.track_info.album.mid}.jpg`,
-        url: config.OVERSEAS ? await get_song_url(id) : id,
+        url: config.OVERSEAS ? ((await get_song_url(id))?.url || '') : id,
         lrc: id,
         songmid: id,
     }

@@ -138,6 +138,30 @@ export const adminRoutes = (app) => {
         }
     })
 
+    app.post('/admin/cookies/:id/refresh', authMiddleware, async (c) => {
+        const id = c.req.param('id')
+        const cookie = store.getCookie(id)
+        if (!cookie) {
+            return c.json({ success: false, error: 'Cookie不存在' }, 404)
+        }
+        if (cookie.platform !== 'tencent') {
+            return c.json({ success: false, error: '仅支持QQ音乐Cookie刷新' }, 400)
+        }
+
+        const refreshResult = await cookieMonitor.refreshTencentCookie(cookie)
+        if (refreshResult.success) {
+            return c.json({
+                success: true,
+                message: 'Cookie刷新成功',
+                data: { id: cookie.id }
+            })
+        }
+        return c.json({
+            success: false,
+            error: refreshResult.error || 'Cookie刷新失败'
+        }, 400)
+    })
+
     app.post('/admin/cookies/validate', authMiddleware, async (c) => {
         const body = await c.req.json()
         const { platform, cookie } = body

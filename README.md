@@ -17,39 +17,77 @@
 
 ## API 支持矩阵
 
-| 类型 | 说明 | 网易云 (`netease`) | QQ音乐 (`tencent`) |
-|------|------|:---:|:---:|
-| `song` | 单曲信息 | ✅ | ✅ |
-| `playlist` | 歌单 | ✅ | ✅ |
-| `artist` | 歌手歌曲 | ✅ | ❌ |
-| `search` | 单曲搜索 | ✅ | ✅ |
-| `search_playlist` | 歌单搜索（`id` 填关键词） | ✅ | ✅ |
-| `fm` | 私人漫游（`id` 填模式，[见下方说明](#私人漫游-fm-模式)） | ✅ | ❌ |
-| `url` | 播放链接 | ✅ | ✅ |
-| `lrc` | 歌词 | ✅ | ✅ |
-| `pic` | 封面图片 | ✅ | ✅ |
+### 曲目
 
-### 私人漫游（`fm`）模式
+| 类型 | 说明 | `id` | 网易云 | QQ音乐 |
+|------|------|------|:---:|:---:|
+| `song` | 单曲信息 | 歌曲 ID | ✅ | ✅ |
+| `playlist` | 歌单 | 歌单 ID | ✅ | ✅ |
+| `artist` | 歌手歌曲 | 歌手 ID | ✅ | ❌ |
 
-`type=fm` 时，`id` 参数对应网易云客户端「私人漫游」的模式，留空则等同 `DEFAULT`。
+### 搜索
 
-| `id` 值 | 说明 |
-|---------|------|
-| 留空 / `DEFAULT` | **默认漫游**：综合听歌记录做常规个性化推荐 |
-| `FAMILIAR` | **熟悉模式**：多推收藏、常听、关注过的歌手与相似曲风 |
-| `EXPLORE` | **探索模式**：多推较少听过的新歌、冷门歌，拓展曲库 |
-| `SCENE_RCMD` | **场景漫游**：按生活场景推荐（建议配合子模式，见下表） |
-| `aidj` | **AI DJ**：AI 串烧混剪，歌曲之间带过渡衔接 |
+| 类型 | 说明 | `id` | 网易云 | QQ音乐 |
+|------|------|------|:---:|:---:|
+| `search` | 单曲搜索 | 关键词 | ✅ | ✅ |
+| `search_playlist` | 歌单搜索 | 关键词 | ✅ | ✅ |
+| `search_dj` | 电台搜索 | 关键词 | ✅ | ❌ |
 
-`SCENE_RCMD` 场景子模式（`id` 格式为 `SCENE_RCMD:子模式`）：
+### 电台（仅网易云）
 
-| 子模式 | 说明 |
-|--------|------|
-| `EXERCISE` | **运动**：节奏明快、适合锻炼 |
-| `FOCUS` | **专注**：适合工作、学习，偏轻音乐/纯音乐 |
-| `NIGHT_EMO` | **深夜**：适合夜晚、情绪向的慢歌 |
+| 类型 | 说明 | `id` |
+|------|------|------|
+| `dj` | 节目列表（可播放） | 电台 ID |
+| `dj_detail` | 电台详情 | 电台 ID |
+| `djprogram` | 单集详情（可播放） | 节目 ID |
+| `dj_hot` | 热门 / 推荐电台 | `hot` 或 `recommend` |
 
-> 需配置网易云登录 Cookie 才能获得针对账号的个性化推荐；未登录时每次通常只返回少量歌曲。
+> `dj_detail` / `dj_hot` / `search_dj` 返回列表的 `url` 会指向 `type=dj`。
+
+### 私人漫游（仅网易云）
+
+| 类型 | 说明 | `id` |
+|------|------|------|
+| `fm` | 私人漫游 | 模式，可空（默认 `DEFAULT`） |
+
+| `id` 模式 | 说明 |
+|-----------|------|
+| `DEFAULT` | 默认漫游 |
+| `FAMILIAR` | 熟悉模式 |
+| `EXPLORE` | 探索模式 |
+| `aidj` | AI DJ |
+| `SCENE_RCMD` / `SCENE_RCMD:FOCUS` 等 | 场景漫游（子模式：`EXERCISE` / `FOCUS` / `NIGHT_EMO`） |
+
+> 需登录 Cookie 才有个性化推荐。
+
+### 媒体
+
+| 类型 | 说明 | `id` | 网易云 | QQ音乐 |
+|------|------|------|:---:|:---:|
+| `url` | 播放链接 | 歌曲 ID | ✅ | ✅ |
+| `lrc` | 歌词 | 歌曲 ID | ✅ | ✅ |
+| `pic` | 封面 | 歌曲 ID | ✅ | ✅ |
+
+### 音质（`quality`，仅 `type=url` 生效）
+
+斜杠两侧为同义别名。会员不够或歌曲无该档时自动降级。  
+网易：高清臻音及以下多为 VIP，以上需 SVIP。QQ：SQ / HQ 需 VIP，臻品母带 / 臻品全景声需超级会员。
+
+| quality | 网易云 | QQ音乐 | 备注 |
+|---------|--------|--------|------|
+| `128` / `standard` | 标准 | 标准品质 | 默认 |
+| `higher` | 较高 | ❌ | 仅网易 |
+| `320` / `exhigh` | 极高 | HQ高品质 | 网易 VIP / QQ VIP |
+| `flac` / `lossless` | 无损 | SQ无损品质 | 网易 VIP / QQ VIP |
+| `hires` | 高解析度无损 | ❌ | 曲目需有 Hi-Res；仅网易 VIP |
+| `jyeffect` | 高清臻音 | ❌ | 仅网易 VIP |
+| `sky` | 沉浸环绕声 | ❌ | 仅网易 SVIP |
+| `jymaster` | 超清母带 | ❌ | 仅网易 SVIP |
+| `dolby` | 杜比全景声 | ❌ | 仅网易 SVIP |
+| `atmos` | ❌ | 臻品全景声 | 仅 QQ 超级会员 |
+| `master` | ❌ | 臻品母带 | 仅 QQ 超级会员 |
+
+`type=url` 默认返回 JSON：`{"url","quality"}`；需要 302 时追加 `&redirect=1`。
 
 ## 地区限制
 
@@ -85,7 +123,13 @@
 git clone https://github.com/qq01-hub/Meting-API.git
 cd Meting-API
 npm install
-node node.js
+node.exe ./node.js
+```
+
+或：
+
+```bash
+npm run start:node
 ```
 
 部署成功后访问 `http://localhost:3000/test` 验证服务是否正常运行。
@@ -149,30 +193,78 @@ docker run -d --name meting \
 
 ```html
 <script>
-var meting_api='http://your-domain/api?server=:server&type=:type&id=:id&auth=:auth&r=:r';
+var meting_api='http://your-domain/api?server=:server&type=:type&id=:id&auth=:auth&r=:r&redirect=1';
 </script>
 ```
 
+> 列表里的播放链接会自动带 `redirect=1`（302 直链）。直接请求 `type=url` 默认返回 JSON（含音质中文名）；需要 302 时自行加 `redirect=1`。
+
 ### API 请求示例
 
+**曲目**
 ```
+# 网易云：获取歌单内歌曲列表
 GET /api?server=netease&type=playlist&id=6907557348
-GET /api?server=netease&type=url&id=22704470
-GET /api?server=netease&type=search&id=风筝误
-GET /api?server=netease&type=search_playlist&id=流行
-GET /api?server=netease&type=fm
-GET /api?server=netease&type=fm&id=FAMILIAR
-GET /api?server=netease&type=fm&id=SCENE_RCMD:FOCUS
-GET /api?server=tencent&type=search&id=风筝误
+
+# 网易云：获取单曲信息
+GET /api?server=netease&type=song&id=254059
+
+# QQ音乐：获取歌单内歌曲列表
 GET /api?server=tencent&type=playlist&id=7326220405
-GET /api?server=tencent&type=song&id=004Yi5BD3ksoAN
-GET /api?server=tencent&type=search_playlist&id=抖音热歌
-GET /api?server=tencent&type=lrc&id=004Yi5BD3ksoAN
+```
+
+**搜索**
+```
+# 网易云：按关键词搜索单曲（id 填关键词）
+GET /api?server=netease&type=search&id=风筝误
+
+# 网易云：按关键词搜索歌单
+GET /api?server=netease&type=search_playlist&id=流行
+
+# 网易云：按关键词搜索电台（仅网易云）
+GET /api?server=netease&type=search_dj&id=代码时间
+```
+
+**电台（仅网易云）**
+```
+# 获取电台节目列表（可播放；id = 电台 ID）
+GET /api?server=netease&type=dj&id=336355127
+
+# 获取单集节目详情（可播放；id = 节目 ID）
+GET /api?server=netease&type=djprogram&id=1367665101
+
+# 热门电台列表（id 固定写 hot）
+GET /api?server=netease&type=dj_hot&id=hot
+```
+
+**漫游 / 媒体**
+```
+# 私人漫游 · 熟悉模式
+GET /api?server=netease&type=fm&id=FAMILIAR
+
+# 网易云播放链接 · 无损（默认返回 JSON，含音质中文名）
+GET /api?server=netease&type=url&id=254059&quality=lossless
+
+# QQ 臻品母带（需 SVIP；不够则降级为实际可播音质）
+GET /api?server=tencent&type=url&id=0010BrWk2SucQr&quality=master
+
+# 需要 302 直链时（播放器 / MetingJS）
+GET /api?server=tencent&type=url&id=0010BrWk2SucQr&quality=flac&redirect=1
+
+# QQ音乐：获取歌词（纯文本）
+GET /api?server=tencent&type=lrc&id=0010BrWk2SucQr
 ```
 
 ### 响应格式
 
-- `type=url`：以 `@` 开头返回纯文本，否则 302 重定向到音频 URL
+- `type=url`：默认 JSON，例如：
+  ```json
+  {
+    "url": "https://...",
+    "quality": "无损"
+  }
+  ```
+  追加 `redirect=1` 时 302 到音频；以 `@` 开头时返回纯文本
 - `type=pic`：302 重定向到图片 URL
 - `type=lrc`：返回纯文本歌词（含翻译合并）
 - 其他类型：返回 JSON 数组

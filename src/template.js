@@ -12,6 +12,11 @@ const typeNames = {
     search: '单曲搜索',
     search_playlist: '歌单搜索',
     fm: '私人漫游',
+    dj: '电台节目',
+    dj_detail: '电台详情',
+    djprogram: '电台单集',
+    dj_hot: '热门电台',
+    search_dj: '电台搜索',
     lrc: '歌词',
     pic: '封面',
     url: '链接'

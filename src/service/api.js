@@ -1,19 +1,7 @@
 import Providers from "../providers/index.js"
 import { format as lyricFormat, get_url } from "../util.js"
 import store from "../admin/store.js"
-import { isValidQuality } from "../quality.js"
-
-const parseCookieString = (cookieString) => {
-    if (!cookieString) return {}
-    const cookies = {}
-    cookieString.split(';').forEach(item => {
-        const [key, value] = item.trim().split('=')
-        if (key && value) {
-            cookies[key] = value
-        }
-    })
-    return cookies
-}
+import { isValidQuality, getQualityName, buildUrlPayload } from "../quality.js"
 
 export default async (ctx) => {
 
@@ -24,6 +12,7 @@ export default async (ctx) => {
     const type = query.type || 'playlist'
     const id = query.id || '6907557348'
     const quality = query.quality?.toLowerCase()
+    const wantRedirect = query.redirect === '1' || query.redirect === 'true'
 
     if (!p.get_provider_list().includes(server) || !p.get(server).support_type.includes(type)) {
         ctx.status(400)
@@ -44,16 +33,29 @@ export default async (ctx) => {
     let data = await p.get(server).handle(type, id, cookie, { quality })
 
     if (type === 'url') {
-        let url = data
+        // 兼容旧返回：纯字符串 URL
+        const payload = typeof data === 'string'
+            ? buildUrlPayload(data, quality || 'standard', quality || 'standard', server)
+            : data
 
+        const url = payload?.url || ''
         if (!url) {
             ctx.status(403)
             return ctx.json({ error: 'no url' })
         }
-        if (url.startsWith('@'))
+        if (url.startsWith('@')) {
             return ctx.text(url)
+        }
 
-        return ctx.redirect(url)
+        // 默认 JSON：url + 实际音质；redirect=1 时 302，兼容 Meting 等播放器
+        if (wantRedirect) {
+            return ctx.redirect(url)
+        }
+
+        return ctx.json({
+            url: payload.url,
+            quality: payload.quality || getQualityName(quality || 'standard', server),
+        })
     }
 
     if (type === 'pic') {
@@ -70,8 +72,13 @@ export default async (ctx) => {
             const _ = String(x[i])
             if (!_.startsWith('@') && !_.startsWith('http') && _.length > 0) {
                 const qualityParam = i === 'url' && quality ? `&quality=${quality}` : ''
-                const linkType = i === 'url' && type === 'search_playlist' ? 'playlist' : i
-                x[i] = `${get_url(ctx)}?server=${server}&type=${linkType}&id=${_}${qualityParam}`
+                const redirectParam = i === 'url' ? '&redirect=1' : ''
+                let linkType = i
+                if (i === 'url') {
+                    if (type === 'search_playlist') linkType = 'playlist'
+                    else if (type === 'dj_hot' || type === 'dj_detail' || type === 'search_dj') linkType = 'dj'
+                }
+                x[i] = `${get_url(ctx)}?server=${server}&type=${linkType}&id=${_}${qualityParam}${redirectParam}`
             }
         }
         return x
