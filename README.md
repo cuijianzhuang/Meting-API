@@ -2,9 +2,14 @@
 
 多平台音乐 API 服务，支持网易云音乐和 QQ 音乐，提供完整的 Cookie 管理、VIP 歌曲播放、自动续期和监测通知功能。
 
+**当前版本：3.0.0**
+
 ## 功能特性
 
 - 双平台支持：网易云音乐、QQ 音乐
+- 高音质取链：`type=url` 支持多档 VIP/SVIP 音质，返回实际档位中文名，不可用时自动降级
+- 网易云电台：节目列表、电台详情、单集详情、热门推荐、电台搜索
+- 网易云私人漫游：`fm` 多模式（熟悉 / 探索 / AI DJ / 场景漫游等）
 - Cookie 管理系统：增删改查、在线验证、VIP 播放能力检测
 - QQ 音乐 Cookie 自动刷新：支持 musickey 和 refresh_token 两种续期方式
 - Cookie 定时监测：可配置间隔自动检查，失效/VIP 丢失时自动通知
@@ -13,8 +18,7 @@
 - 用户与权限管理：多用户、角色区分、登录失败锁定
 - 管理后台：功能完备的单页应用，响应式设计
 - 多运行时部署：Node.js / Docker / Vercel / Cloudflare Workers
-- Docker 多架构镜像：支持 amd64/arm64，自动 CI/CD 发布
-
+- Docker 多架构镜像：支持 amd64/arm64，GitHub Actions 自动构建发布
 ## API 支持矩阵
 
 ### 曲目
@@ -70,8 +74,14 @@
 
 ### 音质（`quality`，仅 `type=url` 生效）
 
-斜杠两侧为同义别名。会员不够或歌曲无该档时自动降级。  
-网易：高清臻音及以下多为 VIP，以上需 SVIP。QQ：SQ / HQ 需 VIP，臻品母带 / 臻品全景声需超级会员。
+斜杠两侧为同义别名（如 `flac` = `lossless`）。会员不够或歌曲无该档资源时自动降级，`quality` 字段为**实际拿到**的档位中文名。
+
+**会员边界**
+
+| 平台 | VIP | SVIP / 超级会员 |
+|------|-----|-----------------|
+| 网易云 | 极高 / 无损 / 高解析度无损 / 高清臻音 | 沉浸环绕声 / 超清母带 / 杜比全景声 |
+| QQ 音乐 | HQ高品质 / SQ无损品质 | 臻品全景声 / 臻品母带 |
 
 | quality | 网易云 | QQ音乐 | 备注 |
 |---------|--------|--------|------|
@@ -87,8 +97,7 @@
 | `atmos` | ❌ | 臻品全景声 | 仅 QQ 超级会员 |
 | `master` | ❌ | 臻品母带 | 仅 QQ 超级会员 |
 
-`type=url` 默认返回 JSON：`{"url","quality"}`；需要 302 时追加 `&redirect=1`。
-
+`type=url` 默认返回 JSON：`{"url","quality"}`；播放器需要 302 直链时追加 `&redirect=1`。
 ## 地区限制
 
 ### 部署在国外
@@ -120,20 +129,19 @@
 ### 手动部署
 
 ```bash
-git clone https://github.com/qq01-hub/Meting-API.git
+git clone https://github.com/wqqqqqq200/Meting-API.git
 cd Meting-API
 npm install
-node.exe ./node.js
+npm run start:node
 ```
 
 或：
 
 ```bash
-npm run start:node
+node.exe ./node.js
 ```
 
-部署成功后访问 `http://localhost:3000/test` 验证服务是否正常运行。
-
+部署成功后访问 `http://localhost:3000` 查看文档，或 `http://localhost:3000/test` 验证 API。
 ### Docker 部署
 
 镜像地址：[w3126197382/meting-api](https://hub.docker.com/r/w3126197382/meting-api)
@@ -164,12 +172,44 @@ docker run -d --name meting \
   w3126197382/meting-api:latest
 ```
 
-宝塔升级：拉取新镜像后重建容器，镜像填 `w3126197382/meting-api:latest`（或指定版本如 `v1.0.2`），保留原有 `-v ...:/app/data` 挂载即可。
+宝塔升级：拉取新镜像后重建容器，镜像填 `w3126197382/meting-api:latest`（或指定版本如 `3.0.0`），保留原有 `-v ...:/app/data` 挂载即可。
 
+#### 发布 Docker 镜像
+
+项目已配置 GitHub Actions（`.github/workflows/publish.yml`），推送到仓库后自动构建并推送到 [Docker Hub](https://hub.docker.com/r/w3126197382/meting-api)。
+
+**方式一：打版本标签（推荐）**
+
+```bash
+npm run patch   # 3.0.0 → 3.0.1，并 push main + tag
+# 或 npm run minor / npm run major
+```
+
+或手动：
+
+```bash
+git tag v3.0.1
+git push origin v3.0.1
+```
+
+会发布 `w3126197382/meting-api:3.0.1`、`3.0` 等标签。
+
+**方式二：推 main 分支**
+
+```bash
+git push origin main
+```
+
+会更新 `latest` 及短 commit 标签。
+
+**方式三：手动触发**
+
+GitHub → Actions → **Build and Push Docker Image** → Run workflow。
+
+> 需在仓库 Secrets 中配置 `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。
 ### Vercel 部署
 
-<a href="https://vercel.com/import/project?template=https://github.com/qq01-hub/Meting-API"><img src="https://vercel.com/button" height="36"></a>
-
+<a href="https://vercel.com/import/project?template=https://github.com/wqqqqqq200/Meting-API"><img src="https://vercel.com/button" height="36"></a>
 点击按钮后按提示操作即可。Vercel 部署时 `OVERSEAS` 自动设为 `1`。
 
 > **注意**：Vercel/Cloudflare Workers 运行时不支持管理后台功能（依赖文件系统），仅提供基础 API 服务。
@@ -242,16 +282,22 @@ GET /api?server=netease&type=dj_hot&id=hot
 # 私人漫游 · 熟悉模式
 GET /api?server=netease&type=fm&id=FAMILIAR
 
-# 网易云播放链接 · 无损（默认返回 JSON，含音质中文名）
+# 网易云 · 无损（默认 JSON）
 GET /api?server=netease&type=url&id=254059&quality=lossless
 
-# QQ 臻品母带（需 SVIP；不够则降级为实际可播音质）
+# 网易云 · 高清臻音（需 VIP Cookie；无该档则降级）
+GET /api?server=netease&type=url&id=254059&quality=jyeffect
+
+# 网易云 · 高解析度无损（曲目需有 Hi-Res 资源，如 1456890009）
+GET /api?server=netease&type=url&id=1456890009&quality=hires
+
+# QQ · 臻品母带（需超级会员；不够则降级）
 GET /api?server=tencent&type=url&id=0010BrWk2SucQr&quality=master
 
 # 需要 302 直链时（播放器 / MetingJS）
 GET /api?server=tencent&type=url&id=0010BrWk2SucQr&quality=flac&redirect=1
 
-# QQ音乐：获取歌词（纯文本）
+# QQ · 歌词（纯文本）
 GET /api?server=tencent&type=lrc&id=0010BrWk2SucQr
 ```
 
@@ -264,8 +310,7 @@ GET /api?server=tencent&type=lrc&id=0010BrWk2SucQr
     "quality": "无损"
   }
   ```
-  追加 `redirect=1` 时 302 到音频；以 `@` 开头时返回纯文本
-- `type=pic`：302 重定向到图片 URL
+  请求 `quality=jyeffect` 若平台静默降级，`quality` 会显示实际档位（如「无损」）。追加 `redirect=1` 时 302 到音频；以 `@` 开头时返回纯文本- `type=pic`：302 重定向到图片 URL
 - `type=lrc`：返回纯文本歌词（含翻译合并）
 - 其他类型：返回 JSON 数组
 
@@ -536,8 +581,13 @@ https://localhost:8099 {
 
 ## 常见问题
 
-### QQ音乐无法播放？
+### 请求高音质却返回更低档位？
 
+- 确认 Cookie 为对应平台 VIP / SVIP（或 QQ 超级会员）
+- 确认**歌曲本身有该档资源**（如 `hires` 需曲目带 Hi-Res；测试曲 `254059` 有高清臻音但无 Hi-Res）
+- 返回 JSON 中的 `quality` 已是实际档位，便于判断是否被平台降级
+
+### QQ音乐无法播放？
 - 确认部署在国内服务器
 - 确认添加了有效的 VIP Cookie
 - 尝试使用包含 `psrf_qqrefresh_token` 的完整 Cookie 以支持自动续期
