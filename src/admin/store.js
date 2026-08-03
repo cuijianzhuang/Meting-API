@@ -1,5 +1,6 @@
 import { get_runtime } from '../util.js'
 import { validateCookie as validateCookieOnline } from './cookie-validator.js'
+import config from '../config.js'
 
 const runtime = get_runtime()
 
@@ -21,9 +22,36 @@ const SECURITY_FILE = 'security.json'
 const CONFIG_FILE = 'config.json'
 const MONITOR_LOGS_FILE = 'monitor_logs.json'
 const API_TOKENS_FILE = 'api_tokens.json'
+const COOKIE_KEY_FILE = 'cookie-encryption.key'
+const COOKIE_ENCRYPTION_PREFIX = 'enc:v1:'
 
 const MAX_LOGIN_ATTEMPTS = 5
 const LOCKOUT_DURATION = 15 * 60 * 1000
+
+const isContributionCookie = (cookie) => cookie?.source === 'contribution'
+    || Boolean(cookie?.contributionKey)
+    || String(cookie?.note || '').startsWith('contribution:')
+
+const cookieHasSvip = (cookie) => Boolean(
+    cookie?.userInfo?.isSvip
+    || cookie?.userInfo?.canPlaySvip
+    || (Number(cookie?.userInfo?.svipType) || 0) > 0,
+)
+
+export const rankActiveCookie = (cookie) => {
+    // Shared SVIP outranks every global/base account. Otherwise the base
+    // Meting account outranks contributed VIP/free accounts.
+    if (cookieHasSvip(cookie)) return 300
+    if (!isContributionCookie(cookie)) return 200
+    return 100
+}
+
+export const selectActiveCookie = (cookies) => [...cookies]
+    .sort((a, b) => {
+        const rank = rankActiveCookie(b) - rankActiveCookie(a)
+        if (rank) return rank
+        return Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0)
+    })[0] || null
 
 const generateSecret = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
@@ -94,6 +122,7 @@ class DataStore {
         this.config = {}
         this.monitorLogs = []
         this.apiTokens = new Map()
+        this.cookieEncryptionKey = null
         this.initialized = false
     }
 
@@ -105,6 +134,7 @@ class DataStore {
                 if (!fs.existsSync(DATA_DIR)) {
                     fs.mkdirSync(DATA_DIR, { recursive: true })
                 }
+                this.initCookieEncryptionKey()
                 await this.loadFromFile()
             } catch (e) {
                 console.log('DataStore init:', e.message)
@@ -112,9 +142,11 @@ class DataStore {
         }
         
         if (this.users.size === 0) {
-            this.users.set('admin', {
-                username: 'admin',
-                password: this.hashPassword('admin123'),
+            const username = String(config.ADMIN_USERNAME || 'admin').trim() || 'admin'
+            const password = String(config.ADMIN_PASSWORD || 'admin123')
+            this.users.set(username, {
+                username,
+                password: this.hashPassword(password),
                 role: 'admin',
                 createdAt: Date.now()
             })
@@ -134,6 +166,96 @@ class DataStore {
         return hash.toString(16)
     }
 
+    parseCookieEncryptionKey(value) {
+        const raw = String(value || '').trim()
+        if (!raw) return null
+        if (/^[a-f\d]{64}$/i.test(raw)) return Buffer.from(raw, 'hex')
+        try {
+            const decoded = Buffer.from(raw, 'base64')
+            return decoded.length === 32 ? decoded : null
+        } catch {
+            return null
+        }
+    }
+
+    initCookieEncryptionKey() {
+        if (runtime !== 'node' || this.cookieEncryptionKey) return
+        const configured = globalThis?.process?.env?.METING_COOKIE_ENCRYPTION_KEY
+        if (configured) {
+            const key = this.parseCookieEncryptionKey(configured)
+            if (!key) throw new Error('METING_COOKIE_ENCRYPTION_KEY 必须是 32 字节 base64 或 64 位 hex')
+            this.cookieEncryptionKey = key
+            return
+        }
+
+        const keyPath = globalThis?.process?.env?.METING_COOKIE_KEY_FILE
+            || path.join(DATA_DIR, COOKIE_KEY_FILE)
+        if (fs.existsSync(keyPath)) {
+            const key = this.parseCookieEncryptionKey(fs.readFileSync(keyPath, 'utf-8'))
+            if (!key) throw new Error(`Cookie 加密密钥文件无效: ${keyPath}`)
+            this.cookieEncryptionKey = key
+            return
+        }
+
+        const key = nodeCrypto.randomBytes(32)
+        fs.writeFileSync(keyPath, key.toString('base64'), { mode: 0o600, flag: 'wx' })
+        try { fs.chmodSync(keyPath, 0o600) } catch {}
+        this.cookieEncryptionKey = key
+        console.log(`Cookie encryption: 已自动生成密钥 ${keyPath}`)
+    }
+
+    encryptCookieValue(value, id, platform) {
+        if (!value) return ''
+        if (!this.cookieEncryptionKey) throw new Error('Cookie 加密密钥未初始化')
+        if (String(value).startsWith(COOKIE_ENCRYPTION_PREFIX)) return String(value)
+        const iv = nodeCrypto.randomBytes(12)
+        const cipher = nodeCrypto.createCipheriv('aes-256-gcm', this.cookieEncryptionKey, iv)
+        cipher.setAAD(Buffer.from(`${id}:${platform}`))
+        const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()])
+        const tag = cipher.getAuthTag()
+        return `${COOKIE_ENCRYPTION_PREFIX}${iv.toString('base64')}:${tag.toString('base64')}:${encrypted.toString('base64')}`
+    }
+
+    decryptCookieValue(value, id, platform) {
+        const raw = String(value || '')
+        if (!raw.startsWith(COOKIE_ENCRYPTION_PREFIX)) return { value: raw, legacy: Boolean(raw) }
+        if (!this.cookieEncryptionKey) throw new Error('Cookie 加密密钥未初始化')
+        const parts = raw.slice(COOKIE_ENCRYPTION_PREFIX.length).split(':')
+        if (parts.length !== 3) throw new Error(`Cookie 密文格式无效: ${id}`)
+        try {
+            const decipher = nodeCrypto.createDecipheriv(
+                'aes-256-gcm',
+                this.cookieEncryptionKey,
+                Buffer.from(parts[0], 'base64'),
+            )
+            decipher.setAAD(Buffer.from(`${id}:${platform}`))
+            decipher.setAuthTag(Buffer.from(parts[1], 'base64'))
+            const decrypted = Buffer.concat([
+                decipher.update(Buffer.from(parts[2], 'base64')),
+                decipher.final(),
+            ])
+            return { value: decrypted.toString('utf8'), legacy: false }
+        } catch {
+            throw new Error(`Cookie 无法解密，请检查加密密钥是否被更换（记录 ${id}）`)
+        }
+    }
+
+    saveCookiesFile() {
+        if (runtime !== 'node') return
+        const encrypted = {}
+        for (const [id, cookie] of this.cookies) {
+            encrypted[id] = {
+                ...cookie,
+                cookie: this.encryptCookieValue(cookie.cookie, id, cookie.platform),
+            }
+        }
+        const cookiesPath = path.join(DATA_DIR, COOKIES_FILE)
+        const temporaryPath = `${cookiesPath}.tmp`
+        fs.writeFileSync(temporaryPath, JSON.stringify(encrypted, null, 2), { mode: 0o600 })
+        fs.renameSync(temporaryPath, cookiesPath)
+        try { fs.chmodSync(cookiesPath, 0o600) } catch {}
+    }
+
     async loadFromFile() {
         if (runtime !== 'node') return
         
@@ -142,6 +264,27 @@ class DataStore {
             if (fs.existsSync(cookiesPath)) {
                 const data = JSON.parse(fs.readFileSync(cookiesPath, 'utf-8'))
                 this.cookies = new Map(Object.entries(data))
+                let migrated = false
+                for (const [id, cookie] of this.cookies) {
+                    const decrypted = this.decryptCookieValue(cookie?.cookie, id, cookie?.platform)
+                    if (decrypted.legacy) migrated = true
+                    cookie.cookie = decrypted.value
+                    const legacyNote = String(cookie?.note || '')
+                    if (!legacyNote.startsWith('contribution:')) continue
+                    const contributionKey = legacyNote.slice('contribution:'.length)
+                    const providerName = String(cookie.providerName || cookie.createdBy || '匿名用户').trim().slice(0, 40)
+                    this.cookies.set(id, {
+                        ...cookie,
+                        note: `首页共享 · ${providerName}`,
+                        source: 'contribution',
+                        contributionKey,
+                        providerName,
+                    })
+                    migrated = true
+                }
+                if (migrated) {
+                    this.saveCookiesFile()
+                }
             }
             
             const usersPath = path.join(DATA_DIR, USERS_FILE)
@@ -186,8 +329,7 @@ class DataStore {
         if (runtime !== 'node') return
         
         try {
-            const cookiesPath = path.join(DATA_DIR, COOKIES_FILE)
-            fs.writeFileSync(cookiesPath, JSON.stringify(Object.fromEntries(this.cookies), null, 2))
+            this.saveCookiesFile()
             
             const usersPath = path.join(DATA_DIR, USERS_FILE)
             fs.writeFileSync(usersPath, JSON.stringify(Object.fromEntries(this.users), null, 2))
@@ -247,7 +389,7 @@ class DataStore {
     }
 
     validateCookieFormat(platform, cookieData) {
-        if (!platform || !['netease', 'tencent'].includes(platform)) {
+        if (!platform || !['netease', 'tencent', 'qishui'].includes(platform)) {
             return { valid: false, error: '无效的平台类型' }
         }
 
@@ -271,19 +413,37 @@ class DataStore {
             }
         }
 
+        if (platform === 'qishui') {
+            if (!/(?:^|;\s*)(?:sessionid|sessionid_ss|sid_guard|uid_tt|passport_csrf_token)=/i.test(cookieData)) {
+                return { valid: false, error: '汽水音乐 Cookie 需要包含 sessionid 等登录字段' }
+            }
+        }
+
         return { valid: true }
     }
 
-    async addCookie(platform, cookieData, note = '', username = 'system', skipValidation = false) {
+    async addCookie(platform, cookieData, note = '', username = 'system', skipValidation = false, metadata = {}) {
         const formatValidation = this.validateCookieFormat(platform, cookieData)
         if (!formatValidation.valid) {
             return { success: false, error: formatValidation.error }
         }
 
-        if (note) {
+        const contributionKey = String(metadata?.contributionKey || '').trim()
+        const legacyNote = String(metadata?.legacyNote || '').trim()
+        if (note || contributionKey) {
             for (const [existingId, existingCookie] of this.cookies) {
-                if (existingCookie.platform === platform && existingCookie.note === note) {
-                    const updateResult = await this.updateCookie(existingId, { cookie: cookieData, note }, username, skipValidation)
+                const sameContribution = contributionKey && existingCookie.platform === platform && (
+                    existingCookie.contributionKey === contributionKey
+                    || existingCookie.note === legacyNote
+                )
+                if (existingCookie.platform === platform && (existingCookie.note === note || sameContribution)) {
+                    const updateResult = await this.updateCookie(existingId, {
+                        cookie: cookieData,
+                        note,
+                        source: metadata.source || existingCookie.source,
+                        contributionKey: contributionKey || existingCookie.contributionKey,
+                        providerName: metadata.providerName || existingCookie.providerName,
+                    }, username, skipValidation)
                     if (updateResult.success) {
                         await this.addLog('cookie_update', `覆盖${platform} Cookie: ${note}`, username)
                     }
@@ -306,6 +466,9 @@ class DataStore {
             validatedAt: null,
             userInfo: null,
             validationError: null
+            ,source: metadata.source || 'admin'
+            ,contributionKey: contributionKey || ''
+            ,providerName: String(metadata.providerName || '').trim().slice(0, 40)
         }
 
         if (!skipValidation) {
@@ -430,7 +593,7 @@ class DataStore {
 
     getActiveCookie(platform) {
         const cookies = this.getCookies(platform).filter(c => c.isActive && c.isValid !== false)
-        return cookies[0] || null
+        return selectActiveCookie(cookies)
     }
 
     isAccountLocked(username) {

@@ -1072,6 +1072,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
                         <select id="cookiePlatform" required>
                             <option value="netease">网易云音乐</option>
                             <option value="tencent">QQ音乐</option>
+                            <option value="qishui">汽水音乐</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -1111,6 +1112,15 @@ const getAdminHtml = () => `<!DOCTYPE html>
                             <li>在左侧 Cookies 下找到 y.qq.com</li>
                             <li>复制 <code>uin</code> 和 <code>qqmusic_key</code> 的值</li>
                             <li>格式：<code>uin=你的uin; qqmusic_key=你的key</code></li>
+                        </ol>
+                    </div>
+                    <div class="help-section">
+                        <h4>汽水音乐 Cookie 获取方法：</h4>
+                        <ol>
+                            <li>登录汽水音乐网页版或使用管理端扫码登录</li>
+                            <li>在开发者工具的 Application（应用）→ Cookies 中打开 qishui.com</li>
+                            <li>复制完整 Cookie，至少需要包含 <code>sessionid</code>、<code>sessionid_ss</code>、<code>sid_guard</code> 或 <code>uid_tt</code> 之一</li>
+                            <li>选择“汽水音乐”，粘贴 Cookie 后点击“保存并验证”</li>
                         </ol>
                     </div>
                 </div>
@@ -1312,7 +1322,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
         };
 
         const getPlatformName = (platform) => {
-            return platform === 'netease' ? '网易云音乐' : 'QQ音乐';
+            return platform === 'netease' ? '网易云音乐' : platform === 'qishui' ? '汽水音乐' : 'QQ音乐';
         };
 
         const getValidationBadge = (cookie) => {

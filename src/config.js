@@ -11,10 +11,23 @@ const ADMIN_PATH = globalThis?.Deno?.env?.get("ADMIN_PATH") || globalThis?.proce
 
 const adminPath = ADMIN_PATH.replace(/^\/+|\/+$/g, '')
 
+const ADMIN_USERNAME = (
+    globalThis?.Deno?.env?.get("ADMIN_USERNAME")
+    || globalThis?.process?.env?.ADMIN_USERNAME
+    || 'admin'
+).trim() || 'admin'
+
+const ADMIN_PASSWORD =
+    globalThis?.Deno?.env?.get("ADMIN_PASSWORD")
+    || globalThis?.process?.env?.ADMIN_PASSWORD
+    || 'admin123'
+
 OVERSEAS = Boolean(OVERSEAS)
 
 export default {
     OVERSEAS,
     PORT,
     ADMIN_PATH: adminPath,
+    ADMIN_USERNAME,
+    ADMIN_PASSWORD,
 }

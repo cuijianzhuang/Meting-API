@@ -38,10 +38,19 @@ export default async (ctx) => {
             ? buildUrlPayload(data, quality || 'standard', quality || 'standard', server)
             : data
 
-        const url = payload?.url || ''
+        let url = payload?.url || ''
         if (!url) {
             ctx.status(403)
             return ctx.json({ error: 'no url' })
+        }
+        if (server === 'qishui' && payload?.auth) {
+            const endpoint = new URL(get_url(ctx))
+            endpoint.pathname = '/audio/qishui'
+            endpoint.search = ''
+            endpoint.searchParams.set('url', url)
+            endpoint.searchParams.set('auth', payload.auth)
+            url = endpoint.toString()
+            payload.url = url
         }
         if (url.startsWith('@')) {
             return ctx.text(url)
@@ -53,8 +62,10 @@ export default async (ctx) => {
         }
 
         return ctx.json({
-            url: payload.url,
+            url,
             quality: payload.quality || getQualityName(quality || 'standard', server),
+            duration: payload.duration,
+            loudness: payload.loudness || null,
         })
     }
 

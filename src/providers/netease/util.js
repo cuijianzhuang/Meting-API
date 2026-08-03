@@ -197,7 +197,8 @@ export const map_song_list = (song_list) => {
             author: artists.reduce((i, v) => ((i ? i + " / " : i) + v.name), ''),
             pic: song?.al?.picUrl || song.id,
             url: song.id,
-            lrc: song.id
+            lrc: song.id,
+            duration: Number(song.dt || song.duration || 0) || undefined,
         }
     })
 }

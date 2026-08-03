@@ -15,7 +15,7 @@ ENV UID=${UID}
 ENV GID=${GID}
 ENV PORT=${PORT}
 
-RUN apk add --no-cache su-exec \
+RUN apk add --no-cache su-exec chromium nss freetype harfbuzz ca-certificates \
     && addgroup -g ${GID} --system meting \
     && adduser -G meting --system -D -s /bin/sh -u ${UID} meting
 

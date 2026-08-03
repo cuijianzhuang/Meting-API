@@ -7,6 +7,9 @@ export const VALID_QUALITY = {
         '128', 'standard', 'higher', '320', 'exhigh', 'flac', 'lossless', 'hires',
         'jyeffect', 'sky', 'jymaster', 'dolby',
     ],
+    qishui: [
+        '128', 'standard', 'higher', '320', 'exhigh', 'flac', 'lossless', 'hires', 'master',
+    ],
 }
 
 /**
@@ -47,12 +50,38 @@ export const getQualityName = (quality, server) => {
     return meta.name
 }
 
-/** 统一 type=url 的返回结构：仅 url + 实际音质中文名 */
-export const buildUrlPayload = (url, actualQuality, requestedQuality, server) => {
+const finiteNumber = (value) => {
+    if (value === null || value === undefined || value === '' || typeof value === 'boolean') return undefined
+    const number = Number(value)
+    return Number.isFinite(number) ? number : undefined
+}
+
+export const normalizeDuration = (value) => {
+    const duration = finiteNumber(value)
+    if (duration === undefined || duration <= 0) return undefined
+    return Math.round(duration)
+}
+
+export const normalizeLoudness = (raw) => {
+    if (!raw || typeof raw !== 'object') return undefined
+    const loudness = {}
+    for (const field of ['gain', 'peak', 'lra', 'closedGain', 'closedPeak']) {
+        const value = finiteNumber(raw[field])
+        if (value !== undefined) loudness[field] = value
+    }
+    return Object.keys(loudness).length ? loudness : undefined
+}
+
+/** 统一 type=url 的返回结构；不支持响度的平台明确返回 loudness: null。 */
+export const buildUrlPayload = (url, actualQuality, requestedQuality, server, rawLoudness, rawDuration) => {
     if (!url) return null
     const quality = (actualQuality || requestedQuality || 'standard').toLowerCase()
-    return {
+    const payload = {
         url,
         quality: getQualityName(quality, server),
+        loudness: normalizeLoudness(rawLoudness) || null,
     }
+    const duration = normalizeDuration(rawDuration)
+    if (duration) payload.duration = duration
+    return payload
 }

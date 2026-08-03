@@ -1,17 +1,21 @@
 # Meting-API
 
-多平台音乐 API 服务，支持网易云音乐和 QQ 音乐，提供完整的 Cookie 管理、VIP 歌曲播放、自动续期和监测通知功能。
+多平台音乐 API 服务，支持网易云音乐、QQ 音乐和汽水音乐，提供 Cookie 管理、会员歌曲播放、自动续期和监测通知功能。
 
-**当前版本：3.0.0**
+**当前版本：3.1.0**
 
 ## 功能特性
 
-- 双平台支持：网易云音乐、QQ 音乐
+- 三平台支持：网易云音乐、QQ 音乐、汽水音乐
+- 汽水音乐：公开搜索、歌曲信息、歌词、加密音频解密代理、个性化漫游
+- 汽水扫码登录：Meting 在 Linux/Node 环境直接生成官方二维码并维护登录会话
 - 高音质取链：`type=url` 支持多档 VIP/SVIP 音质，返回实际档位中文名，不可用时自动降级
 - 网易云电台：节目列表、电台详情、单集详情、热门推荐、电台搜索
 - 网易云私人漫游：`fm` 多模式（熟悉 / 探索 / AI DJ / 场景漫游等）
-- Cookie 管理系统：增删改查、在线验证、VIP 播放能力检测
+- Cookie 管理系统：支持手动添加网易、QQ、汽水 Cookie，提供增删改查、在线验证和 VIP 播放能力检测
+- Cookie 选择优先级：房间账号 > 共享 SVIP > Meting 基础账号 > 共享 VIP/普通账号
 - QQ 音乐 Cookie 自动刷新：支持 musickey 和 refresh_token 两种续期方式
+- 汽水 Cookie 定时监测：自动验证登录态和会员状态；失效时自动通知，重新扫码或手动添加同备注 Cookie 会覆盖旧凭证
 - Cookie 定时监测：可配置间隔自动检查，失效/VIP 丢失时自动通知
 - Webhook 通知：兼容 Gotify、企业微信、钉钉、飞书等
 - 2FA 双因素认证：TOTP 实现，兼容 Google Authenticator
@@ -23,19 +27,19 @@
 
 ### 曲目
 
-| 类型 | 说明 | `id` | 网易云 | QQ音乐 |
-|------|------|------|:---:|:---:|
-| `song` | 单曲信息 | 歌曲 ID | ✅ | ✅ |
-| `playlist` | 歌单 | 歌单 ID | ✅ | ✅ |
-| `artist` | 歌手歌曲 | 歌手 ID | ✅ | ❌ |
+| 类型 | 说明 | `id` | 网易云 | QQ音乐 | 汽水音乐 |
+|------|------|------|:---:|:---:|:---:|
+| `song` | 单曲信息 | 歌曲 ID | ✅ | ✅ | ✅ |
+| `playlist` | 歌单 | 歌单 ID | ✅ | ✅ | ❌ |
+| `artist` | 歌手歌曲 | 歌手 ID | ✅ | ❌ | ❌ |
 
 ### 搜索
 
-| 类型 | 说明 | `id` | 网易云 | QQ音乐 |
-|------|------|------|:---:|:---:|
-| `search` | 单曲搜索 | 关键词 | ✅ | ✅ |
-| `search_playlist` | 歌单搜索 | 关键词 | ✅ | ✅ |
-| `search_dj` | 电台搜索 | 关键词 | ✅ | ❌ |
+| 类型 | 说明 | `id` | 网易云 | QQ音乐 | 汽水音乐 |
+|------|------|------|:---:|:---:|:---:|
+| `search` | 单曲搜索 | 关键词 | ✅ | ✅ | ✅ |
+| `search_playlist` | 歌单搜索 | 关键词 | ✅ | ✅ | ❌ |
+| `search_dj` | 电台搜索 | 关键词 | ✅ | ❌ | ❌ |
 
 ### 电台（仅网易云）
 
@@ -48,11 +52,11 @@
 
 > `dj_detail` / `dj_hot` / `search_dj` 返回列表的 `url` 会指向 `type=dj`。
 
-### 私人漫游（仅网易云）
+### 私人漫游
 
 | 类型 | 说明 | `id` |
 |------|------|------|
-| `fm` | 私人漫游 | 模式，可空（默认 `DEFAULT`） |
+| `fm` | 私人漫游 | 网易为模式；汽水可空 |
 
 | `id` 模式 | 说明 |
 |-----------|------|
@@ -62,15 +66,15 @@
 | `aidj` | AI DJ |
 | `SCENE_RCMD` / `SCENE_RCMD:FOCUS` 等 | 场景漫游（子模式：`EXERCISE` / `FOCUS` / `NIGHT_EMO`） |
 
-> 需登录 Cookie 才有个性化推荐。
+> 网易和汽水都需要有效登录 Cookie 才能获取个性化漫游。汽水不使用网易的模式参数；汽水没有登录态时返回空列表。
 
 ### 媒体
 
-| 类型 | 说明 | `id` | 网易云 | QQ音乐 |
-|------|------|------|:---:|:---:|
-| `url` | 播放链接 | 歌曲 ID | ✅ | ✅ |
-| `lrc` | 歌词 | 歌曲 ID | ✅ | ✅ |
-| `pic` | 封面 | 歌曲 ID | ✅ | ✅ |
+| 类型 | 说明 | `id` | 网易云 | QQ音乐 | 汽水音乐 |
+|------|------|------|:---:|:---:|:---:|
+| `url` | 播放链接 | 歌曲 ID | ✅ | ✅ | ✅ |
+| `lrc` | 歌词 | 歌曲 ID | ✅ | ✅ | ✅ |
+| `pic` | 封面 | 歌曲 ID | ✅ | ✅ | ✅ |
 
 ### 音质（`quality`，仅 `type=url` 生效）
 
@@ -82,13 +86,14 @@
 |------|-----|-----------------|
 | 网易云 | 极高 / 无损 / 高解析度无损 / 高清臻音 | 沉浸环绕声 / 超清母带 / 杜比全景声 |
 | QQ 音乐 | HQ高品质 / SQ无损品质 | 臻品全景声 / 臻品母带 |
+| 汽水音乐 | 高品质 / 无损（需有效登录 Cookie，具体取决于账号和歌曲资源） | 暂无独立 SVIP 音质档 |
 
-| quality | 网易云 | QQ音乐 | 备注 |
-|---------|--------|--------|------|
-| `128` / `standard` | 标准 | 标准品质 | 默认 |
-| `higher` | 较高 | ❌ | 仅网易 |
-| `320` / `exhigh` | 极高 | HQ高品质 | 网易 VIP / QQ VIP |
-| `flac` / `lossless` | 无损 | SQ无损品质 | 网易 VIP / QQ VIP |
+| quality | 网易云 | QQ音乐 | 汽水音乐 | 备注 |
+|---------|--------|--------|----------|------|
+| `128` / `standard` | 标准 | 标准品质 | 标准 | 默认 |
+| `higher` | 较高 | ❌ | ❌ | 仅网易 |
+| `320` / `exhigh` | 极高 | HQ高品质 | 高品质 | 会员和歌曲资源不足时自动降级 |
+| `flac` / `lossless` | 无损 | SQ无损品质 | 无损 | 会员和歌曲资源不足时自动降级 |
 | `hires` | 高解析度无损 | ❌ | 曲目需有 Hi-Res；仅网易 VIP |
 | `jyeffect` | 高清臻音 | ❌ | 仅网易 VIP |
 | `sky` | 沉浸环绕声 | ❌ | 仅网易 SVIP |
@@ -172,7 +177,7 @@ docker run -d --name meting \
   w3126197382/meting-api:latest
 ```
 
-宝塔升级：拉取新镜像后重建容器，镜像填 `w3126197382/meting-api:latest`（或指定版本如 `3.0.0`），保留原有 `-v ...:/app/data` 挂载即可。
+宝塔升级：拉取新镜像后重建容器，镜像填 `w3126197382/meting-api:latest`（或指定版本如 `3.1.0`），保留原有 `-v ...:/app/data` 挂载即可。
 
 #### 发布 Docker 镜像
 
@@ -181,18 +186,18 @@ docker run -d --name meting \
 **方式一：打版本标签（推荐）**
 
 ```bash
-npm run patch   # 3.0.0 → 3.0.1，并 push main + tag
+npm run patch   # 3.1.0 → 3.1.1，并 push main + tag
 # 或 npm run minor / npm run major
 ```
 
 或手动：
 
 ```bash
-git tag v3.0.1
-git push origin v3.0.1
+git tag v3.1.1
+git push origin v3.1.1
 ```
 
-会发布 `w3126197382/meting-api:3.0.1`、`3.0` 等标签。
+会发布 `w3126197382/meting-api:3.1.1`、`3.1` 等标签。
 
 **方式二：推 main 分支**
 
@@ -222,8 +227,30 @@ GitHub → Actions → **Build and Push Docker Image** → Run workflow。
 | `OVERSEAS` | `false` | 海外模式。Vercel/Cloudflare 运行时自动设为 `true` |
 | `ADMIN_PATH` | `admin` | 管理后台路径。如设为 `secret-admin`，则后台地址为 `/secret-admin` |
 | `DATA_DIR` | `./data` | 数据存储目录 |
+| `METING_COOKIE_ENCRYPTION_KEY` | 自动生成 | Cookie 加密主密钥，支持 32 字节 base64 或 64 位 hex；配置后不可随意更换 |
+| `METING_COOKIE_KEY_FILE` | `DATA_DIR/cookie-encryption.key` | 未配置主密钥时自动生成的密钥文件位置 |
 | `UID` | `1010` | Docker 容器用户 UID |
 | `GID` | `1010` | Docker 容器用户 GID |
+### 汽水扫码
+
+汽水扫码已直接集成在 Meting 中，不需要额外服务或环境变量。Node/Linux 部署可通过 `/admin/qr/create` 和 `/admin/qr/check` 完成汽水音乐账号登录；请使用汽水音乐 App 扫码确认。若账号触发额外安全验证，本次二维码会被拒绝，需重新生成后再试。
+
+### 手动添加汽水 Cookie
+
+管理后台进入“Cookie 管理”并点击“添加 Cookie”，平台选择“汽水音乐”。Cookie 至少需要包含 `sessionid`、`sessionid_ss`、`sid_guard`、`uid_tt` 或 `passport_csrf_token` 中的有效登录字段。
+
+也可以通过管理接口添加：
+
+```bash
+curl -X POST 'https://你的域名/admin/cookies' \
+  -H 'Authorization: Bearer 你的API_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"platform":"qishui","cookie":"sessionid=你的值; sessionid_ss=你的值","note":"汽水基础账号"}'
+```
+
+汽水 Cookie 可用于登录搜索、歌曲详情、播放地址和个性化漫游。其中 `type=fm` 必须存在有效汽水登录 Cookie。
+
+> 汽水当前登录态是会话 Cookie，Meting 没有可稳定使用的公开 `refresh_token` 续期接口，因此不能像 QQ 音乐一样后台无感刷新。系统会自动定时验证汽水 Cookie；验证失败会发送监测通知。重新扫码或手动添加新 Cookie 时使用相同备注，系统会自动覆盖旧 Cookie。
 
 ## 使用方法
 
@@ -465,7 +492,7 @@ X-Auth-Token: your-token
 |------|------|------|
 | GET | `/admin/cookies` | Cookie 列表（支持 `?platform=` 筛选） |
 | GET | `/admin/cookies/:id` | Cookie 详情 |
-| POST | `/admin/cookies` | 添加 Cookie |
+| POST | `/admin/cookies` | 添加 Cookie，`platform` 支持 `netease`、`tencent`、`qishui` |
 | PUT | `/admin/cookies/:id` | 更新 Cookie |
 | DELETE | `/admin/cookies/:id` | 删除 Cookie |
 | POST | `/admin/cookies/:id/verify` | 验证 Cookie |

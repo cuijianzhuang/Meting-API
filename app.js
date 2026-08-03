@@ -9,6 +9,7 @@ import { logger } from 'hono/logger'
 import { cors } from 'hono/cors'
 import config from './src/config.js'
 import { get_runtime, get_url } from './src/util.js'
+import { qishuiAudioResponse } from './src/providers/qishui/audio.js'
 
 const app = new Hono()
 
@@ -34,6 +35,14 @@ app.use('*', async (c, next) => {
 })
 
 app.get('/api', api)
+app.get('/audio/qishui', async (c) => {
+    try {
+        return await qishuiAudioResponse(c)
+    } catch (error) {
+        console.error('[QishuiAudio]', error?.message || error)
+        return c.json({ error: error?.message || 'qishui audio failed' }, 502)
+    }
+})
 app.get('/test', handler)
 app.get('/', (c) => {
     const baseUrl = get_url(c)
@@ -503,7 +512,7 @@ app.get('/', (c) => {
             <div class="info-grid">
                 <div class="info-item">
                     <div class="info-label">版本</div>
-                    <div class="info-value">3.0.0</div>
+                    <div class="info-value">3.1.0</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">运行环境</div>
@@ -575,7 +584,7 @@ app.get('/', (c) => {
                         <td><span class="param-type">string</span></td>
                         <td><span class="param-optional">否</span></td>
                         <td><span class="param-default">netease</span></td>
-                        <td><code>netease</code> / <code>tencent</code></td>
+                        <td><code>netease</code> / <code>tencent</code> / <code>qishui</code></td>
                     </tr>
                     <tr>
                         <td><span class="param-name">type</span></td>
@@ -605,22 +614,25 @@ app.get('/', (c) => {
             <div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;line-height:1.7;">
                 仅 <code>type=url</code> 生效。斜杠两侧为同义别名（如 <code>flac</code> = <code>lossless</code>）。会员不够或歌曲无该档时自动降级。<br>
                 网易：高清臻音及以下多为 <span class="tag-vip tag-netease-vip">仅网易 VIP</span>，以上需 <span class="tag-vip tag-netease-svip">仅网易 SVIP</span>。<br>
-                QQ：SQ / HQ 需 <span class="tag-vip tag-qq-vip">仅 QQ VIP</span>，臻品母带 / 臻品全景声需 <span class="tag-vip tag-qq-svip">仅 QQ SVIP</span>。
+                QQ：SQ / HQ 需 <span class="tag-vip tag-qq-vip">仅 QQ VIP</span>，臻品母带 / 臻品全景声需 <span class="tag-vip tag-qq-svip">仅 QQ SVIP</span>。<br>
+                汽水：支持标准、高品质、无损；实际档位取决于歌曲资源和登录账号权限，暂无独立的汽水 SVIP 音质档。
             </div>
             <table class="param-table">
                 <thead>
-                    <tr><th>quality 参数值</th><th>网易云</th><th>QQ音乐</th><th>备注</th></tr>
+                    <tr><th>quality 参数值</th><th>网易云</th><th>QQ音乐</th><th>汽水音乐</th><th>备注</th></tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td><span class="param-name">128</span> / <span class="param-name">standard</span></td>
                         <td>标准</td>
                         <td>标准品质</td>
+                        <td>标准</td>
                         <td>默认</td>
                     </tr>
                     <tr>
                         <td><span class="param-name">higher</span></td>
                         <td>较高</td>
+                        <td><span class="cross">✗</span></td>
                         <td><span class="cross">✗</span></td>
                         <td>仅网易</td>
                     </tr>
@@ -628,6 +640,7 @@ app.get('/', (c) => {
                         <td><span class="param-name">320</span> / <span class="param-name">exhigh</span></td>
                         <td>极高</td>
                         <td>HQ高品质</td>
+                        <td>高品质</td>
                         <td>
                             <span class="tag-vip tag-netease-vip">仅网易 VIP</span>
                             <span class="tag-vip tag-qq-vip">仅 QQ VIP</span>
@@ -637,6 +650,7 @@ app.get('/', (c) => {
                         <td><span class="param-name">flac</span> / <span class="param-name">lossless</span></td>
                         <td>无损</td>
                         <td>SQ无损品质</td>
+                        <td>无损</td>
                         <td>
                             <span class="tag-vip tag-netease-vip">仅网易 VIP</span>
                             <span class="tag-vip tag-qq-vip">仅 QQ VIP</span>
@@ -646,11 +660,13 @@ app.get('/', (c) => {
                         <td><span class="param-name">hires</span></td>
                         <td>高解析度无损</td>
                         <td><span class="cross">✗</span></td>
+                        <td><span class="cross">✗</span></td>
                         <td>曲目需有 Hi-Res；<span class="tag-vip tag-netease-vip">仅网易 VIP</span></td>
                     </tr>
                     <tr>
                         <td><span class="param-name">jyeffect</span></td>
                         <td>高清臻音</td>
+                        <td><span class="cross">✗</span></td>
                         <td><span class="cross">✗</span></td>
                         <td><span class="tag-vip tag-netease-vip">仅网易 VIP</span></td>
                     </tr>
@@ -658,11 +674,13 @@ app.get('/', (c) => {
                         <td><span class="param-name">sky</span></td>
                         <td>沉浸环绕声</td>
                         <td><span class="cross">✗</span></td>
+                        <td><span class="cross">✗</span></td>
                         <td><span class="tag-vip tag-netease-svip">仅网易 SVIP</span></td>
                     </tr>
                     <tr>
                         <td><span class="param-name">jymaster</span></td>
                         <td>超清母带</td>
+                        <td><span class="cross">✗</span></td>
                         <td><span class="cross">✗</span></td>
                         <td><span class="tag-vip tag-netease-svip">仅网易 SVIP</span></td>
                     </tr>
@@ -670,18 +688,21 @@ app.get('/', (c) => {
                         <td><span class="param-name">dolby</span></td>
                         <td>杜比全景声</td>
                         <td><span class="cross">✗</span></td>
+                        <td><span class="cross">✗</span></td>
                         <td><span class="tag-vip tag-netease-svip">仅网易 SVIP</span></td>
                     </tr>
                     <tr>
                         <td><span class="param-name">atmos</span></td>
                         <td><span class="cross">✗</span></td>
                         <td>臻品全景声</td>
+                        <td><span class="cross">✗</span></td>
                         <td><span class="tag-vip tag-qq-svip">仅 QQ SVIP</span></td>
                     </tr>
                     <tr>
                         <td><span class="param-name">master</span></td>
                         <td><span class="cross">✗</span></td>
                         <td>臻品母带</td>
+                        <td><span class="cross">✗</span></td>
                         <td><span class="tag-vip tag-qq-svip">仅 QQ SVIP</span></td>
                     </tr>
                 </tbody>
@@ -693,23 +714,23 @@ app.get('/', (c) => {
             <div class="section-subtitle">🔢 类型一览</div>
             <table class="param-table">
                 <thead>
-                    <tr><th>分类</th><th>type</th><th>id</th><th>netease</th><th>tencent</th></tr>
+                    <tr><th>分类</th><th>type</th><th>id</th><th>netease</th><th>tencent</th><th>qishui</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td rowspan="3">曲目</td><td><span class="param-name">song</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">playlist</span></td><td>歌单 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">artist</span></td><td>歌手 ID</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
-                    <tr><td rowspan="3">搜索</td><td><span class="param-name">search</span></td><td>关键词</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">search_playlist</span></td><td>关键词</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">search_dj</span></td><td>关键词</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td rowspan="3">曲目</td><td><span class="param-name">song</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">playlist</span></td><td>歌单 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td><span class="param-name">artist</span></td><td>歌手 ID</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td rowspan="3">搜索</td><td><span class="param-name">search</span></td><td>关键词</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">search_playlist</span></td><td>关键词</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
+                    <tr><td><span class="param-name">search_dj</span></td><td>关键词</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td></tr>
                     <tr><td rowspan="4">电台</td><td><span class="param-name">dj</span></td><td>电台 ID</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
                     <tr><td><span class="param-name">dj_detail</span></td><td>电台 ID</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
                     <tr><td><span class="param-name">djprogram</span></td><td>节目 ID</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
                     <tr><td><span class="param-name">dj_hot</span></td><td>hot / recommend</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
-                    <tr><td>漫游</td><td><span class="param-name">fm</span></td><td>模式（可空）</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td></tr>
-                    <tr><td rowspan="3">媒体</td><td><span class="param-name">url</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">lrc</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
-                    <tr><td><span class="param-name">pic</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td>漫游</td><td><span class="param-name">fm</span></td><td>模式（汽水可空）</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td rowspan="3">媒体</td><td><span class="param-name">url</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">lrc</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+                    <tr><td><span class="param-name">pic</span></td><td>歌曲 ID</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
                 </tbody>
             </table>
 
@@ -738,7 +759,10 @@ ${baseUrl}api?server=netease&type=artist&id=12441107
 ${baseUrl}api?server=tencent&type=playlist&id=7326220405
 
 # QQ音乐：获取单曲信息（返回 JSON）
-${baseUrl}api?server=tencent&type=song&id=0010BrWk2SucQr</pre>
+${baseUrl}api?server=tencent&type=song&id=0010BrWk2SucQr
+
+# 汽水音乐：获取单曲信息（返回 JSON）
+${baseUrl}api?server=qishui&type=song&id=汽水歌曲ID</pre>
                 </div>
             </div>
 
@@ -758,7 +782,10 @@ ${baseUrl}api?server=netease&type=search_dj&id=代码时间
 ${baseUrl}api?server=tencent&type=search&id=风筝误
 
 # QQ音乐：按关键词搜索歌单
-${baseUrl}api?server=tencent&type=search_playlist&id=抖音热歌</pre>
+${baseUrl}api?server=tencent&type=search_playlist&id=抖音热歌
+
+# 汽水音乐：按关键词搜索单曲
+${baseUrl}api?server=qishui&type=search&id=抖音热歌</pre>
                 </div>
             </div>
 
@@ -799,11 +826,15 @@ ${baseUrl}api?server=netease&type=fm&id=EXPLORE
 ${baseUrl}api?server=netease&type=fm&id=aidj
 
 # 私人漫游 · 场景模式（专注；还可换 EXERCISE / NIGHT_EMO）
-${baseUrl}api?server=netease&type=fm&id=SCENE_RCMD:FOCUS</pre>
+${baseUrl}api?server=netease&type=fm&id=SCENE_RCMD:FOCUS
+
+# 汽水音乐 · 个性化漫游（必须配置有效汽水登录 Cookie）
+${baseUrl}api?server=qishui&type=fm</pre>
                 </div>
                 <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;line-height:1.7;">
                     模式：<code>DEFAULT</code>（可空）/ <code>FAMILIAR</code> / <code>EXPLORE</code> / <code>aidj</code> / <code>SCENE_RCMD</code><br>
-                    场景子模式：<code>SCENE_RCMD:EXERCISE</code> / <code>FOCUS</code> / <code>NIGHT_EMO</code>。需登录 Cookie 才有个性化推荐。
+                    网易场景子模式：<code>SCENE_RCMD:EXERCISE</code> / <code>FOCUS</code> / <code>NIGHT_EMO</code>。<br>
+                    汽水漫游必须先配置有效汽水登录 Cookie，否则返回空列表。
                 </div>
             </div>
 
@@ -835,7 +866,12 @@ ${baseUrl}api?server=tencent&type=url&id=0010BrWk2SucQr&quality=atmos
 ${baseUrl}api?server=tencent&type=url&id=0010BrWk2SucQr&quality=master
 
 # 需要 302 直链时（给播放器 / MetingJS）追加 redirect=1
-${baseUrl}api?server=tencent&type=url&id=0010BrWk2SucQr&quality=flac&redirect=1</pre>
+${baseUrl}api?server=tencent&type=url&id=0010BrWk2SucQr&quality=flac&redirect=1
+
+# 汽水音乐：获取播放链接、歌词和封面
+${baseUrl}api?server=qishui&type=url&id=汽水歌曲ID&quality=lossless
+${baseUrl}api?server=qishui&type=lrc&id=汽水歌曲ID
+${baseUrl}api?server=qishui&type=pic&id=汽水歌曲ID</pre>
                 </div>
             </div>
 

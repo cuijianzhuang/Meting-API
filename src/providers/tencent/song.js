@@ -47,6 +47,15 @@ const parseCookieString = (cookieString) => {
     return cookies
 }
 
+export const mergeTencentTrackAudioMeta = (track) => {
+    if (!track?.file) return null
+    return {
+        ...track.file,
+        volume: track.volume,
+        duration: Number(track.interval || 0) * 1000 || undefined,
+    }
+}
+
 const get_track_file = async (songmid) => {
     try {
         const data = {
@@ -60,7 +69,7 @@ const get_track_file = async (songmid) => {
         }
         const url = changeUrlQuery(data, 'https://u.y.qq.com/cgi-bin/musicu.fcg')
         const result = await (await fetch(url)).json()
-        return result?.songinfo?.data?.track_info?.file || null
+        return mergeTencentTrackAudioMeta(result?.songinfo?.data?.track_info)
     } catch {
         return null
     }
@@ -255,7 +264,7 @@ export const get_song_url = async (id, cookie = '', options = {}) => {
             if (QUALITY_MAP[requested]?.s !== typeObj.s) {
                 console.log(`[tencent] quality ${requested} unavailable for ${songmid}, fallback to ${level}`)
             }
-            return buildUrlPayload(url, level, requested, 'tencent')
+            return buildUrlPayload(url, level, requested, 'tencent', file?.volume, file?.duration)
         } catch (e) {
             console.error(`[tencent] fetch url level=${level} failed:`, e?.message || e)
         }
@@ -292,6 +301,7 @@ export const get_song_info = async (id, cookie = '') => {
         url: config.OVERSEAS ? ((await get_song_url(id))?.url || '') : id,
         lrc: id,
         songmid: id,
+        duration: Number(result.track_info.interval || 0) * 1000 || undefined,
     }
     return [song_info]
 }

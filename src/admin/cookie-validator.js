@@ -1,5 +1,6 @@
 import { request } from '../providers/netease/util.js'
 import { changeUrlQuery } from '../providers/tencent/util.js'
+import { getQishuiProfile } from '../providers/qishui/index.js'
 
 const parseCookieString = (cookieString) => {
     if (!cookieString) return {}
@@ -280,11 +281,15 @@ export const validateTencentCookie = async (cookieString) => {
     }
 }
 
+export const validateQishuiCookie = async (cookieString) => getQishuiProfile(cookieString)
+
 export const validateCookie = async (platform, cookieString) => {
     if (platform === 'netease') {
         return await validateNeteaseCookie(cookieString)
     } else if (platform === 'tencent') {
         return await validateTencentCookie(cookieString)
+    } else if (platform === 'qishui') {
+        return await validateQishuiCookie(cookieString)
     } else {
         return {
             valid: false,
@@ -297,5 +302,6 @@ export const validateCookie = async (platform, cookieString) => {
 export default {
     validateCookie,
     validateNeteaseCookie,
-    validateTencentCookie
+    validateTencentCookie,
+    validateQishuiCookie,
 }

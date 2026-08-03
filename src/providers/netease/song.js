@@ -121,6 +121,13 @@ const fetchUrlByLevel = async (id, cookie, level, encodeType) => {
         br: item.br,
         size: item.size,
         type: item.type,
+        duration: item.time,
+        loudness: {
+            gain: item.gain,
+            peak: item.peak,
+            closedGain: item.closedGain,
+            closedPeak: item.closedPeak,
+        },
     }
 }
 
@@ -155,7 +162,14 @@ export const get_song_url = async (id, cookie = '', options = {}) => {
             if (qualityKey !== requested.key) {
                 console.log(`[netease] quality ${requested.key} unavailable for ${id}, got ${qualityKey}`)
             }
-            return buildUrlPayload(result.url, qualityKey, requested.key, 'netease')
+            return buildUrlPayload(
+                result.url,
+                qualityKey,
+                requested.key,
+                'netease',
+                result.loudness,
+                result.duration,
+            )
         } catch (e) {
             console.error(`[netease] fetch url level=${tryLevel} failed:`, e?.message || e)
         }

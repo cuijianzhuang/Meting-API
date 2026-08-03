@@ -11,6 +11,7 @@ export const map_song_list = (songs = []) => {
         url: song.mid,
         lrc: song.mid,
         songmid: song.mid,
+        duration: Number(song.interval || 0) * 1000 || undefined,
     }))
 }
 

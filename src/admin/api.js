@@ -2,14 +2,25 @@ import store from '../admin/store.js'
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js'
 import { validateCookie } from './cookie-validator.js'
 import cookieMonitor from './cookie-monitor.js'
+import { createQishuiQr, checkQishuiQr } from '../providers/qishui/qr.js'
+import { createNeteaseQrSession, checkNeteaseQrSession } from '../providers/netease/qr_login.js'
+import { createTencentQrSession, checkTencentQrSession } from '../providers/tencent/qr_login.js'
+import Providers from '../providers/index.js'
+import { get_url } from '../util.js'
 
 const formatCookieForDisplay = (cookie) => {
-    const { id, platform, note, createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError } = cookie
+    const { id, platform, createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError } = cookie
+    const legacyContribution = String(cookie.note || '').startsWith('contribution:')
+    const providerName = String(cookie.providerName || cookie.createdBy || '').trim()
+    const note = legacyContribution ? `首页共享 · ${providerName || '匿名用户'}` : cookie.note
     let cookiePreview = cookie.cookie
     if (cookiePreview.length > 50) {
         cookiePreview = cookiePreview.substring(0, 50) + '...'
     }
-    return { id, platform, cookiePreview, note, createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError }
+    return {
+        id, platform, cookiePreview, note, providerName, source: cookie.source || (legacyContribution ? 'contribution' : 'admin'),
+        createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError,
+    }
 }
 
 export const adminRoutes = (app) => {
@@ -172,6 +183,155 @@ export const adminRoutes = (app) => {
         
         const result = await validateCookie(platform, cookie)
         return c.json({ success: true, data: result })
+    })
+
+    app.post('/admin/qr/create', authMiddleware, async (c) => {
+        const body = await c.req.json()
+        const platform = String(body.platform || '').trim().toLowerCase()
+        try {
+            const data = platform === 'qishui' ? await createQishuiQr()
+                : platform === 'netease' ? await createNeteaseQrSession()
+                    : platform === 'tencent' ? await createTencentQrSession() : null
+            if (!data) return c.json({ success: false, error: '不支持的扫码平台' }, 400)
+            return c.json({ success: true, data })
+        } catch (error) {
+            return c.json({
+                success: false,
+                code: error?.code || 'QISHUI_QR_CREATE_FAILED',
+                error: error?.message || '汽水音乐二维码生成失败',
+            }, 502)
+        }
+    })
+
+    app.post('/admin/qr/check', authMiddleware, async (c) => {
+        const body = await c.req.json()
+        const platform = String(body.platform || '').trim().toLowerCase()
+        try {
+            const data = platform === 'qishui' ? await checkQishuiQr(body.key || body.token)
+                : platform === 'netease' ? await checkNeteaseQrSession(body.key || body.token)
+                    : platform === 'tencent' ? await checkTencentQrSession({ qrsig: body.qrsig || body.key }) : null
+            if (!data) return c.json({ success: false, error: '不支持的扫码平台' }, 400)
+            return c.json({ success: true, data })
+        } catch (error) {
+            return c.json({
+                success: false,
+                code: error?.code || 'QISHUI_QR_CHECK_FAILED',
+                error: error?.message || '汽水音乐扫码状态查询失败',
+            }, 502)
+        }
+    })
+
+    app.get('/admin/openmusic', authMiddleware, async (c) => {
+        const server = String(c.req.query('server') || '').trim().toLowerCase()
+        const type = String(c.req.query('type') || '').trim().toLowerCase()
+        const id = String(c.req.query('id') || '').trim()
+        const cookie = String(c.req.header('X-OpenMusic-Cookie') || '').trim()
+        const providers = new Providers()
+        const provider = providers.get(server)
+        if (!provider || !provider.support_type.includes(type)) {
+            return c.json({ success: false, error: '房间私有接口参数无效' }, 400)
+        }
+        if (!cookie) return c.json({ success: false, error: '房间音源登录凭证为空' }, 400)
+        try {
+            const data = await provider.handle(type, id, cookie, { quality: c.req.query('quality') })
+            if (server === 'qishui' && type === 'url' && data?.url && data?.auth) {
+                const endpoint = new URL(get_url(c))
+                endpoint.pathname = '/audio/qishui'
+                endpoint.search = ''
+                endpoint.searchParams.set('url', data.url)
+                endpoint.searchParams.set('auth', data.auth)
+                data.url = endpoint.toString()
+            }
+            if (type === 'url' && data && typeof data === 'object') {
+                return c.json({ ...data, loudness: data.loudness || null })
+            }
+            return c.json(data)
+        } catch (error) {
+            return c.json({ success: false, error: error?.message || '房间私有音源请求失败' }, 502)
+        }
+    })
+
+    app.post('/admin/fm', authMiddleware, async (c) => {
+        const body = await c.req.json()
+        const platform = String(body.platform || 'netease').trim().toLowerCase()
+        const cookie = String(body.cookie || '').trim()
+        const mode = String(body.mode || '').trim()
+        const excludeIds = new Set(Array.isArray(body.excludeIds) ? body.excludeIds.map((id) => String(id).trim()).filter(Boolean) : [])
+        if (!['netease', 'qishui'].includes(platform) || !cookie) {
+            return c.json({ success: false, error: '漫游平台或登录凭证无效' }, 400)
+        }
+        const provider = new Providers().get(platform)
+        if (!provider?.support_type?.includes('fm')) {
+            return c.json({ success: false, error: '该平台暂不支持漫游' }, 400)
+        }
+        try {
+            for (let batch = 0; batch < (platform === 'qishui' ? 3 : 1); batch += 1) {
+                const data = await provider.handle('fm', mode, cookie)
+                if (platform !== 'qishui') return c.json({ success: true, data })
+                if (!Array.isArray(data) || !data.length) continue
+                const candidates = [...data]
+                    .filter((song) => !excludeIds.has(String(song?.id || '').trim()))
+                    .sort(() => Math.random() - 0.5)
+                if (candidates.length) return c.json({ success: true, data: candidates })
+            }
+            return c.json({ success: false, error: '连续几批漫游歌曲都暂时没有可用候选' }, 403)
+        } catch (error) {
+            return c.json({ success: false, error: error?.message || '漫游歌曲获取失败' }, 502)
+        }
+    })
+
+    app.post('/admin/contribute', authMiddleware, async (c) => {
+        const body = await c.req.json()
+        const platform = String(body.platform || '').trim().toLowerCase()
+        const cookie = String(body.cookie || '').trim()
+        const provider = String(body.providerName || body.provider || '').trim().slice(0, 40)
+        if (!['netease', 'tencent', 'qishui'].includes(platform) || !cookie) {
+            return c.json({ success: false, error: '平台或 Cookie 无效' }, 400)
+        }
+        const validation = await validateCookie(platform, cookie)
+        if (!validation.valid) {
+            return c.json({ success: false, error: validation.error || '账号验证失败' }, 400)
+        }
+        if (!validation.userInfo?.canPlayVip && !validation.userInfo?.isVip) {
+            return c.json({ success: false, error: '这个账号暂时没有会员播放权益，暂时不能加入共享池；如果是在房间里绑定，仍然可以用来漫游哦～' }, 400)
+        }
+        const userId = String(validation.userInfo?.userId || '').trim()
+        const displayName = provider || '匿名用户'
+        const contributionKey = `${platform}:${userId || provider || 'anonymous'}`
+        const legacyNote = `contribution:${contributionKey}`
+        const note = `首页共享 · ${displayName}`
+        const result = await store.addCookie(platform, cookie, note, displayName, false, {
+            source: 'contribution',
+            contributionKey,
+            legacyNote,
+            providerName: displayName,
+        })
+        if (!result.success) return c.json(result, 400)
+        return c.json({
+            success: true,
+            data: formatCookieForDisplay(result.data),
+            updated: true,
+            message: '共享成功，谢谢你帮大家点亮更多好歌 ♪',
+        })
+    })
+
+    app.get('/admin/contributions', authMiddleware, async (c) => {
+        const limit = Math.max(1, Math.min(100, Number(c.req.query('limit')) || 20))
+        const data = store.getCookies()
+            .filter(cookie => (
+                cookie.source === 'contribution'
+                || cookie.contributionKey
+                || String(cookie.note || '').startsWith('contribution:')
+            ) && cookie.isValid !== false)
+            .slice(0, limit)
+            .map(cookie => ({
+                providerName: cookie.providerName || cookie.createdBy || '匿名用户',
+                platform: cookie.platform,
+                tier: cookie.userInfo?.isSvip || cookie.userInfo?.canPlaySvip ? 'svip' : 'vip',
+                source: 'homepage',
+                updatedAt: cookie.updatedAt || cookie.createdAt || Date.now(),
+            }))
+        return c.json({ success: true, data })
     })
 
     app.get('/admin/users', authMiddleware, adminMiddleware, async (c) => {

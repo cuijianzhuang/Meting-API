@@ -1,6 +1,6 @@
 {
   "name": "meting-backend-js",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "",
   "main": "node.js",
   "scripts": {
@@ -31,6 +31,9 @@
     "crypto-browserify": "^3.12.0",
     "esbuild": "0.17.5",
     "hono": "^4.1.0",
-    "nanoid": "^4.0.0"
+    "mqtt": "^5.14.1",
+    "nanoid": "^4.0.0",
+    "puppeteer-core": "^24.43.1",
+    "qrcode": "^1.5.4"
   }
 }

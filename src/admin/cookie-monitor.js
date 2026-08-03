@@ -145,7 +145,9 @@ class CookieMonitor {
     }
 
     async handleCookieInvalid(cookie, reason) {
-        const platformName = cookie.platform === 'netease' ? '网易云音乐' : 'QQ音乐'
+        const platformName = cookie.platform === 'netease'
+            ? '网易云音乐'
+            : cookie.platform === 'qishui' ? '汽水音乐' : 'QQ音乐'
         
         console.log(`[CookieMonitor] Cookie失效: ${platformName} - ${cookie.note || cookie.id}`)
 
