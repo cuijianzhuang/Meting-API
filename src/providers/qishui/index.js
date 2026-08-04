@@ -705,13 +705,30 @@ const handle = async (type, id, cookie = '', options = {}) => {
 export const getQishuiProfile = async (cookie) => {
     if (!qishuiCookieHasLogin(cookie)) return { valid: false, error: 'Cookie 缺少汽水登录态', userInfo: null }
     try {
-        const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/me`, pcParams()), { cookie, timeout: 8000 })
+        const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/me`, pcParams()), {
+            cookie,
+            timeout: 8000,
+            headers: {
+                'Cache-Control': 'no-cache, no-store',
+                Pragma: 'no-cache',
+            },
+        })
+        // 不同版本的 PC 接口有时把 my_info 放在 data 内，有时直接放在顶层。
+        // 两层都保留检查，避免外层 data 被选中后丢掉顶层会员信息。
         const root = json?.data || json || {}
-        const user = object(root.my_info, root.myInfo, root.user, root.user_info, root.account, root.me, root)
-        const membership = parseQishuiMembership(root)
+        const user = object(
+            root.my_info, root.myInfo, root.user, root.user_info, root.account, root.me,
+            json?.my_info, json?.myInfo, json?.user, json?.user_info,
+            root,
+        )
+        const membership = parseQishuiMembership(json)
+        // 汽水 PC 接口的正式会员等级位于 my_info.vip_stage；该字段优先于 is_vip。
+        // 这样普通 VIP 标记不会把 SVIP 账号降级成 VIP。
+        const vipStage = text(user.vip_stage || user.vipStage).toLowerCase().replace(/[\s_-]+/g, '')
+        const explicitSvip = vipStage === 'svip' || vipStage === 'supervip' || vipStage === '超级会员'
         // 仅使用 PC 会员接口中明确的汽水会员字段；普通 VIP 不会被当作 SVIP。
-        const isVip = membership.isVip || membership.isSvip
-        const isSvip = membership.isSvip
+        const isVip = membership.isVip || membership.isSvip || explicitSvip
+        const isSvip = explicitSvip || membership.isSvip
         return {
             valid: true,
             error: null,
@@ -721,8 +738,9 @@ export const getQishuiProfile = async (cookie) => {
                 avatarUrl: firstUrl(user.avatar_url || user.avatar || user.larger_avatar_url),
                 isVip,
                 isSvip,
+                vipStage: vipStage || '',
                 vipType: isSvip ? 2 : isVip ? 1 : 0,
-                canPlayVip: isVip,
+                canPlayVip: isVip || isSvip,
                 canPlaySvip: isSvip,
                 membershipKnown: membership.known,
             },
