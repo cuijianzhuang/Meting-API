@@ -280,6 +280,7 @@ export const adminRoutes = (app) => {
                 endpoint.search = ''
                 endpoint.searchParams.set('url', data.url)
                 endpoint.searchParams.set('auth', data.auth)
+                if (data.mimeType) endpoint.searchParams.set('mime_type', data.mimeType)
                 data.url = endpoint.toString()
             }
             if (type === 'url' && data && typeof data === 'object') {

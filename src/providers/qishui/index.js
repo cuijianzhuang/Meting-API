@@ -383,8 +383,13 @@ const streamFrom = (value, inherited = {}) => {
     const authInfo = object(value.encrypt_info, value.EncryptInfo, value.encryptInfo)
     const auth = text(value.play_auth || value.PlayAuth || value.spade_a || authInfo.spade_a || inherited.auth)
     let isVideo = /video/i.test(format)
-    try { isVideo ||= /(?:^|_)video_/i.test(new URL(url).searchParams.get('mime_type') || '') } catch {}
-    return { url, auth, bitrate, quality, format, isVideo, duration: seconds(value.duration || inherited.duration) }
+    let mimeType = ''
+    try {
+        mimeType = text(new URL(url).searchParams.get('mime_type'))
+        isVideo ||= /(?:^|_)video_/i.test(mimeType)
+    } catch {}
+    const isMp4 = /(?:^|[._/-])mp4(?:$|[._/?-])/i.test(`${format} ${mimeType} ${url}`)
+    return { url, auth, bitrate, quality, format, mimeType, isVideo, isMp4, duration: seconds(value.duration || inherited.duration) }
 }
 
 const collectStreams = (payload) => {
@@ -442,9 +447,10 @@ const requestedRank = (quality) => {
 
 const selectSongStream = (streams, options = {}) => {
     const audioStreams = streams.filter(stream => !stream.isVideo)
-    // 只有视频流时直接判定无链，禁止把 video_mp4 当音频返回。
-    if (!audioStreams.length) return null
-    const playableStreams = audioStreams.sort((a, b) => qualityRank(b) - qualityRank(a))
+    // 某些汽水歌曲只有 video_mp4，但其中包含可由浏览器音频元素解码的音轨。
+    // 优先正常音频流；没有音频流时仅允许 MP4 回退，避免把 webm 等纯视频误当音频。
+    const playableStreams = (audioStreams.length ? audioStreams : streams.filter(stream => stream.isMp4))
+        .sort((a, b) => qualityRank(b) - qualityRank(a))
     if (!playableStreams.length) return null
 
     const target = requestedRank(text(options.quality).toLowerCase())
@@ -458,6 +464,7 @@ const selectSongStream = (streams, options = {}) => {
     return {
         url: selected.url,
         auth: selected.auth,
+        mimeType: selected.mimeType || undefined,
         quality: level,
         duration: selected.duration ? selected.duration * 1000 : undefined,
     }
@@ -595,13 +602,48 @@ const membershipLevel = (value) => {
     return ''
 }
 
+const vipMembershipContainers = new Set([
+    'vipinfo', 'vipdetail', 'vipbenefit', 'vippackage', 'memberinfo', 'memberdetail',
+    'memberbenefit', 'memberpackage', 'membershipinfo', 'membershipdetail',
+])
+
+const svipMembershipContainers = new Set([
+    'svipinfo', 'svipdetail', 'svipbenefit', 'svippackage', 'supervipinfo',
+    'supervipdetail', 'supervipbenefit', 'supervippackage',
+])
+
+const membershipContainerActive = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return membershipPositive(value)
+    let positive = false
+    let hasExpiry = false
+    let futureExpiry = false
+    for (const [key, item] of Object.entries(value)) {
+        const normalized = normalizeMembershipKey(key)
+        if (['status', 'state', 'active', 'valid', 'enabled', 'isactive', 'isvalid', 'isenabled', 'isopen', 'opened'].includes(normalized)) {
+            if (membershipPositive(item)) positive = true
+        }
+        if (/^(expiretime|expiresat|expirationtime|expiredat|endtime|validuntil)$/.test(normalized)) {
+            const number = Number(item)
+            const expiry = Number.isFinite(number) && number > 0
+                ? (number < 100000000000 ? number * 1000 : number)
+                : Date.parse(String(item || ''))
+            hasExpiry = true
+            if (expiry > Date.now()) futureExpiry = true
+        }
+    }
+    return hasExpiry ? futureExpiry : positive
+}
+
 // 只读取明确的会员字段，不能把 svip_expire_time 等升级/过期字段当成 SVIP。
 export const parseQishuiMembership = (payload) => {
     const vipNumberKeys = new Set(['viptype', 'viplevel', 'membertype', 'memberlevel', 'musicviptype', 'musicviplevel'])
     const svipNumberKeys = new Set(['sviptype', 'sviplevel', 'superviptype', 'superviplevel'])
     const vipFlagKeys = new Set(['isvip', 'ismember', 'hasvip', 'hasmembership', 'vipactive', 'vipenabled'])
     const svipFlagKeys = new Set(['issvip', 'issupervip', 'hassvip', 'hassupervip', 'svipactive', 'svipenabled'])
-    const labelKeys = new Set(['viplevelname', 'vipname', 'memberlevelname', 'membername', 'membershiplevel', 'membershiptype'])
+    const labelKeys = new Set([
+        'viplevelname', 'vipname', 'vipstage',
+        'memberlevelname', 'membername', 'membershiplevel', 'membershiptype',
+    ])
     let known = false
     let isVip = false
     let isSvip = false
@@ -632,6 +674,12 @@ export const parseQishuiMembership = (payload) => {
                 const level = membershipLevel(value)
                 if (level === 'svip') isSvip = true
                 else if (level === 'vip') isVip = true
+            } else if (svipMembershipContainers.has(normalized)) {
+                known = true
+                if (membershipContainerActive(value)) isSvip = true
+            } else if (vipMembershipContainers.has(normalized)) {
+                known = true
+                if (membershipContainerActive(value)) isVip = true
             }
             if (value && typeof value === 'object') visit(value, depth + 1)
         }
