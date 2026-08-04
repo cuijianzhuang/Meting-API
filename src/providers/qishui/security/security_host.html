@@ -37,17 +37,67 @@
       }
 
       const nativeOpen = XMLHttpRequest.prototype.open;
+      const nativeSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
       const nativeSend = XMLHttpRequest.prototype.send;
       XMLHttpRequest.prototype.open = function (method, url) {
         this.__qishuiTraceUrl = safeUrl(url);
+        this.__qishuiRequestMethod = String(method || 'GET').toUpperCase();
+        this.__qishuiRequestUrl = String(url || '');
+        this.__qishuiRequestHeaders = {};
         trace('xhr.open', { method: String(method), url: this.__qishuiTraceUrl });
         return nativeOpen.apply(this, arguments);
+      };
+      XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+        if (!this.__qishuiRequestHeaders) this.__qishuiRequestHeaders = {};
+        this.__qishuiRequestHeaders[String(name)] = String(value);
+        return nativeSetRequestHeader.apply(this, arguments);
       };
       XMLHttpRequest.prototype.send = function (body) {
         trace('xhr.send', {
           url: this.__qishuiTraceUrl || '',
           bodyLength: body == null ? 0 : String(body).length,
         });
+        // 官方验证组件内部仍有部分请求直接使用 XHR。转到 Meting 的隔离
+        // 浏览器会话，避免用户页面对 api.qishui.com 的跨域请求被拦截。
+        let requestHost = '';
+        try { requestHost = new URL(this.__qishuiRequestUrl || '').hostname; } catch (_) {}
+        const proxiedHosts = new Set(['api.qishui.com', 'auth.zijieapi.com', 'bff-pc.qishui.com']);
+        if (verifyKey && proxiedHosts.has(requestHost) && typeof window.__qishuiRequest === 'function') {
+          const xhr = this;
+          window.__qishuiRequest({
+            method: xhr.__qishuiRequestMethod || 'GET',
+            url: xhr.__qishuiRequestUrl,
+            headers: xhr.__qishuiRequestHeaders || {},
+            body: body == null ? null : String(body),
+            timeout: 180000,
+          }).then(result => {
+            const response = result && result.data ? result.data : result || {};
+            const responseBody = String(response.body || '');
+            let parsedBody = responseBody;
+            try { parsedBody = JSON.parse(responseBody); } catch (_) {}
+            try { Object.defineProperty(xhr, 'status', { configurable: true, value: Number(response.status) || 0 }); } catch (_) {}
+            try { Object.defineProperty(xhr, 'statusText', { configurable: true, value: Number(response.status) === 200 ? 'OK' : '' }); } catch (_) {}
+            try { Object.defineProperty(xhr, 'responseText', { configurable: true, value: responseBody }); } catch (_) {}
+            try { Object.defineProperty(xhr, 'response', { configurable: true, value: parsedBody }); } catch (_) {}
+            try { Object.defineProperty(xhr, 'responseURL', { configurable: true, value: String(response.responseURL || xhr.__qishuiRequestUrl || '') }); } catch (_) {}
+            xhr.getAllResponseHeaders = () => String(response.headers || '');
+            xhr.getResponseHeader = name => {
+              const wanted = String(name || '').toLowerCase();
+              const line = String(response.headers || '').split(/\r?\n/).find(item => item.toLowerCase().startsWith(`${wanted}:`));
+              return line ? line.slice(line.indexOf(':') + 1).trim() : null;
+            };
+            try { Object.defineProperty(xhr, 'readyState', { configurable: true, value: 4 }); } catch (_) {}
+            try {
+              xhr.dispatchEvent(new Event('readystatechange'));
+              xhr.dispatchEvent(new Event('load'));
+              xhr.dispatchEvent(new Event('loadend'));
+            } catch (_) {}
+          }).catch(error => {
+            if (typeof xhr.onerror === 'function') xhr.onerror(error);
+            try { xhr.dispatchEvent(new Event('error')); } catch (_) {}
+          });
+          return;
+        }
         return nativeSend.apply(this, arguments);
       };
 
@@ -175,7 +225,20 @@
         return { raw: info, encrypted: xor5Hex(JSON.stringify(info)) };
       };
 
+      const verifyKey = new URL(location.href).searchParams.get('key') || new URL(location.href).searchParams.get('token') || '';
+      const bridgeRoot = new URL(location.href).searchParams.get('bridgeRoot') || '/admin/qr/qishui/verify';
+      const verifyBridgeUrl = verifyKey
+        ? `${location.origin}${bridgeRoot}/request`
+        : '';
+
       window.__qishuiRequest = function (request) {
+        if (verifyKey && verifyBridgeUrl) {
+          return fetch(verifyBridgeUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: verifyKey, request }),
+          }).then(response => response.json());
+        }
         return new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open(request.method || 'GET', request.url, true);
@@ -209,6 +272,15 @@
         if (!value) return {};
         if (typeof value === 'object') return value;
         try { return JSON.parse(String(value)); } catch (_) { return {}; }
+      }
+
+      function resolveVerifyUrl(value) {
+        if (value && typeof value === 'object') {
+          const host = String(value.host || '').trim();
+          const path = String(value.path || '/').trim() || '/';
+          if (host) return `https://${host}${path.startsWith('/') ? path : `/${path}`}`;
+        }
+        return String(value || '');
       }
 
       function formEncode(values) {
@@ -248,7 +320,7 @@
             'x-tt-passport-verify-portrait': originDecision.verify_portrait_id || '',
           },
           body: formEncode(payload),
-          timeout: 30000,
+          timeout: 180000,
         });
         const envelope = JSON.parse(response.body || '{}');
         const expanded = envelope.data || envelope;
@@ -268,9 +340,10 @@
         setMfaStatus('正在加载汽水安全验证组件…');
         try {
           const decision = await expandVerifyCenterDecision(originDecision || {}, options);
-          if (!decision.url) throw new Error('2046 决策中缺少二次验证组件 URL');
+          const verifyUrl = resolveVerifyUrl(decision.url);
+          if (!verifyUrl) throw new Error('2046 决策中缺少二次验证组件 URL');
           const eventParams = normalizeObject(decision.event_params);
-          const resource = new URL(String(decision.url), 'https://api.qishui.com/');
+          const resource = new URL(verifyUrl, 'https://api.qishui.com/');
           resource.searchParams.set('aid', '386088');
           resource.searchParams.set('verify_reason', String(eventParams.verify_reason || ''));
           resource.searchParams.set('verify_scene', String(eventParams.verify_scene || ''));
@@ -302,7 +375,7 @@
               isNewVerifyUI: true,
               generalParams: options.generalParams || {},
               newSecondVerifyWebOptions: {
-                host: 'https://api.qishui.com',
+                host: options.bridgeHost || 'https://api.qishui.com',
                 verifyAppName: '汽水音乐移动端',
               },
               newSecondVerificationCall: { reportAppLog: () => {} },
@@ -325,11 +398,44 @@
           throw error;
         }
       };
+
+      if (verifyKey) {
+        fetch(`${location.origin}${bridgeRoot}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: verifyKey }),
+        }).then(response => response.json()).then(result => {
+          const decision = result && result.data && result.data.decision;
+          if (!decision) throw new Error(result && result.error || '未获取到汽水验证决策');
+          return window.__qishuiSecondVerify(decision, {
+            generalParams: result.data.generalParams || decision.common_params || {},
+          }).then(verifyResult => {
+            if (!verifyResult || verifyResult.status !== true) {
+              throw new Error(verifyResult && verifyResult.message || '二次验证未完成');
+            }
+            setMfaStatus('验证已完成，正在提交登录结果…');
+            return fetch(`${location.origin}${bridgeRoot}/complete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ key: verifyKey }),
+            });
+          }).then(response => response.json()).then(result => {
+            if (!result || result.success !== true) throw new Error(result && result.error || '二次验证完成失败');
+            try {
+              window.parent.postMessage({ type: 'qishui-second-verify-complete', key: verifyKey }, location.origin);
+            } catch (_) {}
+            setMfaStatus('二次验证完成，可以返回扫码页面继续检查。');
+          });
+        }).catch(error => setMfaStatus(String(error && error.message || error), true));
+      }
     </script>
     <style>
-      html, body { width: 100%; height: 100%; margin: 0; background: #fff; font-family: sans-serif; }
+      html, body { width: 100%; height: 100%; margin: 0; background: #fff !important; font-family: sans-serif; }
+      /* 官方组件会给宿主根节点加深色全屏背景；外层 OpenMusic 已有遮罩，
+         这里保持验证 iframe 纯白，避免上下出现两条黑色背景带。 */
+      body > div { background: #fff !important; }
       #mfa-status { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2147483647; padding: 9px 14px; border-radius: 8px; background: rgba(255,255,255,.96); box-shadow: 0 2px 12px rgba(0,0,0,.15); }
-      #mfa-cancel { position: fixed; right: 14px; bottom: 14px; z-index: 2147483647; padding: 8px 14px; border: 1px solid #ddd; border-radius: 8px; background: #fff; cursor: pointer; }
+      #mfa-cancel { position: fixed; right: 14px; bottom: 14px; z-index: 2147483647; padding: 8px 14px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #202124; cursor: pointer; }
     </style>
   </head>
   <body>

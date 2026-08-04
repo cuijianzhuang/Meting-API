@@ -136,7 +136,7 @@ export const signQishuiRequest = async ({ sessionKey, method, url, headers, body
         url,
         headers: safeHeaders,
         body: body ?? null,
-        timeout: 30000,
+        timeout: 180000,
     })
     if (!response || response.status < 200 || response.status >= 400) {
         throw new Error(`汽水登录接口 HTTP ${response?.status || 0}`)
@@ -153,6 +153,38 @@ export const signQishuiRequest = async ({ sessionKey, method, url, headers, body
         // 登录完成后的 sessionid 可能由 Passport/抖音域名下发；限定
         // api.qishui.com 会导致扫码成功但拿不到完整登录态。
         cookies: await context.cookies(),
+    }
+}
+
+export const requestQishuiSession = async (sessionKey, request) => {
+    const { page, context } = await getPage(sessionKey)
+    const target = new URL(String(request?.url || ''))
+    const allowedHosts = new Set(['api.qishui.com', 'auth.zijieapi.com', 'bff-pc.qishui.com'])
+    if (!allowedHosts.has(target.hostname)) throw new Error('汽水验证请求目标不受支持')
+    const response = await page.evaluate(async value => window.__qishuiRequest(value), {
+        method: String(request?.method || 'GET').toUpperCase(),
+        url: target.toString(),
+        headers: Object.fromEntries(Object.entries(request?.headers || {})
+            .filter(([name]) => !/^(cookie|host|content-length|origin|referer)$/i.test(name))),
+        body: request?.body == null ? null : String(request.body),
+        timeout: 180000,
+    })
+    return {
+        status: Number(response?.status) || 0,
+        body: String(response?.body || ''),
+        responseURL: String(response?.responseURL || target),
+        headers: String(response?.headers || ''),
+        cookies: await context.cookies(),
+    }
+}
+
+export const readQishuiSecurityAsset = name => {
+    const allowed = new Set(['security_host.html', 'react.js', 'react-dom.js', 'sdk-glue.js', 'bdms.js'])
+    const filename = String(name || '')
+    if (!allowed.has(filename)) throw new Error('汽水验证资源不存在')
+    return {
+        body: fs.readFileSync(path.join(SECURITY_DIR, filename)),
+        contentType: MIME[path.extname(filename)] || 'application/octet-stream',
     }
 }
 

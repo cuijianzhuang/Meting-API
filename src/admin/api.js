@@ -2,7 +2,7 @@ import store from '../admin/store.js'
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js'
 import { validateCookie } from './cookie-validator.js'
 import cookieMonitor from './cookie-monitor.js'
-import { createQishuiQr, checkQishuiQr } from '../providers/qishui/qr.js'
+import { createQishuiQr, checkQishuiQr, completeQishuiSecondVerify, getQishuiSecondVerifyAsset, requestQishuiSecondVerify } from '../providers/qishui/qr.js'
 import { createNeteaseQrSession, checkNeteaseQrSession } from '../providers/netease/qr_login.js'
 import { createTencentQrSession, checkTencentQrSession } from '../providers/tencent/qr_login.js'
 import Providers from '../providers/index.js'
@@ -195,11 +195,51 @@ export const adminRoutes = (app) => {
             if (!data) return c.json({ success: false, error: '不支持的扫码平台' }, 400)
             return c.json({ success: true, data })
         } catch (error) {
+            console.error(`[QR] ${platform || 'unknown'} 创建失败:`, error?.message || error)
             return c.json({
                 success: false,
                 code: error?.code || 'QISHUI_QR_CREATE_FAILED',
                 error: error?.message || '汽水音乐二维码生成失败',
             }, 502)
+        }
+    })
+
+    app.get('/admin/qr/qishui/security/:asset', authMiddleware, async (c) => {
+        try {
+            const asset = getQishuiSecondVerifyAsset(c.req.param('asset'))
+            return new Response(asset.body, { headers: { 'Content-Type': asset.contentType, 'Cache-Control': 'no-store' } })
+        } catch (error) {
+            return c.json({ success: false, error: error?.message || '汽水验证资源不存在' }, 404)
+        }
+    })
+
+    app.post('/admin/qr/qishui/request', authMiddleware, async (c) => {
+        try {
+            const body = await c.req.json()
+            const data = await requestQishuiSecondVerify(body.key || body.token, body.request || {})
+            return c.json({ success: true, data })
+        } catch (error) {
+            return c.json({ success: false, error: error?.message || '汽水验证请求失败' }, 502)
+        }
+    })
+
+    app.post('/admin/qr/qishui/verify/start', authMiddleware, async (c) => {
+        try {
+            const body = await c.req.json()
+            const result = await checkQishuiQr(body.key || body.token)
+            if (result?.status !== 'second_verify') return c.json({ success: false, error: '当前会话不需要二次验证' }, 400)
+            return c.json({ success: true, data: result.secondVerify })
+        } catch (error) {
+            return c.json({ success: false, error: error?.message || '汽水二次验证初始化失败' }, 502)
+        }
+    })
+
+    app.post('/admin/qr/qishui/verify/complete', authMiddleware, async (c) => {
+        try {
+            const body = await c.req.json()
+            return c.json({ success: true, data: await completeQishuiSecondVerify(body.key || body.token) })
+        } catch (error) {
+            return c.json({ success: false, error: error?.message || '汽水二次验证完成失败' }, 502)
         }
     })
 

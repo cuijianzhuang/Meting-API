@@ -1,16 +1,28 @@
 import crypto from 'crypto-browserify'
 import { Buffer } from 'buffer/index.js'
 import QRCode from 'qrcode'
-import { closeQishuiSignerSession, signQishuiRequest } from './signer.js'
+import { closeQishuiSignerSession, readQishuiSecurityAsset, requestQishuiSession, signQishuiRequest } from './signer.js'
 
 const API_BASE = 'https://api.qishui.com'
 const AID = '386088'
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) SodaMusic/3.2.1 Chrome/136.0.7103.59 Electron/36.4.0 Safari/537.36'
-const SESSION_TTL_MS = 10 * 60 * 1000
+const SESSION_TTL_MS = 3 * 60 * 1000
 const MIN_CHECK_INTERVAL_MS = 2500
 const sessions = new Map()
 
 const text = (value) => typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim()
+
+const normalizeBizParams = (value) => {
+    if (!value) return {}
+    let source = value
+    if (typeof source === 'string') {
+        try { source = JSON.parse(source) } catch { source = Object.fromEntries(new URLSearchParams(source).entries()) }
+    }
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return {}
+    return Object.fromEntries(Object.entries(source)
+        .filter(([, item]) => item != null)
+        .map(([key, item]) => [String(key), typeof item === 'object' ? JSON.stringify(item) : String(item)]))
+}
 
 const qrError = (message, code = 'QISHUI_QR_ERROR') => {
     const error = new Error(message)
@@ -53,6 +65,8 @@ const createSession = () => {
         cooldownUntil: 0,
         lastResult: null,
         checkPromise: null,
+        secondVerifyPromise: null,
+        secondVerifyState: '',
     }
 }
 
@@ -162,6 +176,17 @@ const challengeSummary = (data = {}) => {
     const captchaInfo = captcha && typeof captcha === 'object' && !Array.isArray(captcha)
         ? { keys: Object.keys(captcha).slice(0, 20), type: text(captcha.type || captcha.verify_type || captcha.verifyType) }
         : { keys: [], type: '' }
+    const verifyWays = Array.isArray(data?.verify_ways)
+        ? data.verify_ways.slice(0, 10).map((item) => {
+            if (typeof item === 'string') return { value: item.slice(0, 80) }
+            if (!item || typeof item !== 'object') return { type: typeof item }
+            return {
+                keys: Object.keys(item).slice(0, 20),
+                type: text(item.type || item.verify_type || item.verifyType || item.way || item.name),
+                enabled: item.enabled,
+            }
+        })
+        : []
     return {
         captchaPresent: Boolean(captchaText),
         captchaKind: /slide|slider|滑块/.test(challengeText)
@@ -175,6 +200,12 @@ const challengeSummary = (data = {}) => {
         redirectUrl: safeUrl(redirectUrl),
         captchaType: captchaInfo.type,
         captchaKeys: captchaInfo.keys,
+        verifyWays,
+        verifyScene: text(data?.verify_scene_desc || data?.passport_scene),
+        packVerifyWay: text(data?.pack_verify_way),
+        schema: safeUrl(text(data?.schema)),
+        url: safeUrl(text(data?.url)),
+        accountFlow: text(data?.account_flow),
         responseDataKeys: Object.keys(data || {}).slice(0, 40),
         extraKeys: data?.extra && typeof data.extra === 'object' ? Object.keys(data.extra).slice(0, 20) : [],
     }
@@ -300,7 +331,25 @@ export const checkQishuiQr = async (token) => {
           || Boolean(data.session_cookie)
           || Boolean(responseSessionId)
       if (errorCode === 2046) {
-          throw qrError('本次登录触发了汽水安全验证，请重新生成二维码后再试', 'QISHUI_QR_SECOND_VERIFY_REQUIRED')
+          session.secondVerifyDecision = data
+          return {
+              platform: 'qishui',
+              status: 'second_verify',
+              loggedIn: false,
+              cookie: '',
+              message: session.secondVerifyState === 'failed'
+                  ? '汽水二次验证未完成，请检查验证窗口后重试'
+                  : '请在汽水二次验证窗口中完成身份验证',
+              secondVerify: {
+                  required: true,
+                  state: 'pending',
+                  decision: data,
+                  generalParams: commonParams(session),
+                  verifyWays: Array.isArray(data.verify_ways) ? data.verify_ways.slice(0, 5) : [],
+                  verifyScene: text(data.verify_scene_desc || data.passport_scene),
+              },
+              diagnostic,
+          }
       }
       if (errorCode === 2) {
           const expired = { platform: 'qishui', status: 'expired', loggedIn: false, cookie: '' }
@@ -386,4 +435,60 @@ export const checkQishuiQr = async (token) => {
     } finally {
       session.checkPromise = null
     }
+}
+
+export const getQishuiSecondVerifyAsset = name => readQishuiSecurityAsset(name)
+
+export const requestQishuiSecondVerify = async (token, request) => {
+    const session = sessions.get(text(token))
+    if (!session) throw qrError('汽水二维码会话已过期，请重新生成', 'QISHUI_QR_SESSION_EXPIRED')
+    return requestQishuiSession(session.sessionKey, request)
+}
+
+/**
+ * 对照 Mineradio V6：二次验证组件完成后，带原决策中的 biz_params 重试扫码确认。
+ */
+export const completeQishuiSecondVerify = async (token) => {
+    const key = text(token)
+    const session = sessions.get(key)
+    if (!session || !session.secondVerifyDecision) throw qrError('汽水二次验证会话已过期，请重新扫码', 'QISHUI_QR_SESSION_EXPIRED')
+
+    const decision = session.secondVerifyDecision
+    const { payload, responseCookies } = await requestPassport(session, 'POST', '/passport/web/check_qrconnect/', { isResend: 'true' }, {
+        need_logo: 'false',
+        need_short_url: 'false',
+        is_frontier: 'true',
+        token: key,
+        is_new_login: '1',
+        next: API_BASE,
+        ...normalizeBizParams(decision.biz_params),
+    })
+    const data = payload?.data || {}
+    session.cookie = mergeCookies(session.cookie, responseCookies)
+    const errorCode = Number(data.error_code || 0)
+    if (errorCode === 2046) {
+        session.secondVerifyState = 'failed'
+        return { platform: 'qishui', status: 'second_verify', loggedIn: false, cookie: '', message: '二次验证已返回，但汽水仍要求再次验证' }
+    }
+    if (errorCode) throw qrError(text(data.description || payload?.message) || `汽水扫码失败（${errorCode}）`, 'QISHUI_QR_CHECK_FAILED')
+
+    const sessionCookie = [
+        data.session_cookie,
+        data.cookie,
+        payload.session_cookie,
+        payload.cookie,
+        data.sessionid ? `sessionid=${data.sessionid}` : '',
+        data.session_id ? `sessionid=${data.session_id}` : '',
+    ].filter(Boolean)
+    session.cookie = mergeCookies(session.cookie, sessionCookie)
+    const confirmed = String(data.status || '').toLowerCase() === '3'
+        || String(data.status || '').toLowerCase() === 'confirmed'
+        || Boolean(data.session_cookie)
+    if (!confirmed || !/(?:^|;\s*)(?:sessionid|sessionid_ss|sid_guard|sid_tt)=/i.test(session.cookie)) {
+        return { platform: 'qishui', status: 'waiting', loggedIn: false, cookie: '', message: text(data.description || payload?.message) || '验证已提交，等待汽水确认' }
+    }
+    const result = { platform: 'qishui', status: 'confirmed', loggedIn: true, cookie: session.cookie, message: '登录成功' }
+    sessions.delete(key)
+    void closeQishuiSignerSession(session.sessionKey)
+    return result
 }
