@@ -145,6 +145,41 @@ const cookieNames = (cookie) => String(cookie || '')
     .map((item) => item.split('=', 1)[0].trim())
     .filter(Boolean)
 
+const challengeSummary = (data = {}) => {
+    const captcha = data?.captcha
+    const descUrl = text(data?.desc_url || data?.descUrl)
+    const redirectUrl = text(data?.redirect_url || data?.redirectUrl)
+    const captchaText = typeof captcha === 'string' ? captcha : captcha && typeof captcha === 'object' ? JSON.stringify(captcha) : ''
+    const challengeText = `${captchaText} ${descUrl} ${redirectUrl}`.toLowerCase()
+    const safeUrl = (value) => {
+        try {
+            const url = new URL(value)
+            return { host: url.hostname, path: url.pathname }
+        } catch {
+            return null
+        }
+    }
+    const captchaInfo = captcha && typeof captcha === 'object' && !Array.isArray(captcha)
+        ? { keys: Object.keys(captcha).slice(0, 20), type: text(captcha.type || captcha.verify_type || captcha.verifyType) }
+        : { keys: [], type: '' }
+    return {
+        captchaPresent: Boolean(captchaText),
+        captchaKind: /slide|slider|滑块/.test(challengeText)
+            ? 'slider'
+            : /verify|captcha|验证码|验证/.test(challengeText)
+                ? 'captcha'
+                : '',
+        descUrlPresent: Boolean(descUrl),
+        redirectUrlPresent: Boolean(redirectUrl),
+        descUrl: safeUrl(descUrl),
+        redirectUrl: safeUrl(redirectUrl),
+        captchaType: captchaInfo.type,
+        captchaKeys: captchaInfo.keys,
+        responseDataKeys: Object.keys(data || {}).slice(0, 40),
+        extraKeys: data?.extra && typeof data.extra === 'object' ? Object.keys(data.extra).slice(0, 20) : [],
+    }
+}
+
 const requestPassport = async (session, method, pathname, params = {}, bodyValues = null) => {
     const url = buildUrl(pathname, { ...commonParams(session), ...params })
     const headers = {
@@ -249,6 +284,7 @@ export const checkQishuiQr = async (token) => {
           rawStatus,
           description: text(data.description || payload?.message),
           cookieNames: cookieNames(session.cookie),
+          challenge: challengeSummary(data),
       }
       console.info('[Qishui QR] 状态', JSON.stringify(diagnostic))
       const responseSessionId = extractSessionId(responseCookies)

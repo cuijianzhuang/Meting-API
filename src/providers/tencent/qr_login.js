@@ -227,7 +227,9 @@ const postMusicApi = async (method, param, comm) => {
     const payload = result?.req_0
     if (result?.code !== 0 || payload?.code !== 0) {
         const message = payload?.data?.errMsg || payload?.data?.errmsg || payload?.code || result?.code
-        throw new Error(`QQ 音乐登录失败: ${message || '未知错误'}${payload?.code ? `（错误码 ${payload.code}）` : ''}`)
+        const error = new Error(`QQ 音乐登录失败: ${message || '未知错误'}${payload?.code ? `（错误码 ${payload.code}）` : ''}`)
+        error.code = Number(payload?.code || result?.code || 0)
+        throw error
     }
     return payload?.data || {}
 }
@@ -316,6 +318,13 @@ const callLoginApi = async (method, param, comm = {}) => {
     return postMusicApi(method, param, await buildAndroidComm(comm))
 }
 
+// QQ 节点迁移或长时间运行后，GetSession 返回的 uid/sid 可能失效。
+const resetMobileSession = () => {
+    mobileDevice.uid = ''
+    mobileDevice.sid = ''
+    mobileDevice.sessionPromise = null
+}
+
 const cookieValue = (cookie, name) => {
     const value = cookie?.[name]
     return typeof value === 'string' ? value : value?.value || ''
@@ -383,15 +392,19 @@ const confirmMobileLogin = async (qrcodeId, payload) => {
     if (messageQrId && messageQrId !== qrcodeId) {
         throw new Error('QQ 音乐二维码会话不匹配，请重新扫码')
     }
-    const data = await callLoginApi(
-        'Login',
-        {
-            musicid: Number(String(musicId).replace(/\D/g, '')),
-            qrCodeID: qrcodeId,
-            token,
-        },
-        { tmeLoginType: 6 },
-    )
+    const loginParams = {
+        musicid: Number(String(musicId).replace(/\D/g, '')),
+        qrCodeID: qrcodeId,
+        token,
+    }
+    let data
+    try {
+        data = await callLoginApi('Login', loginParams, { tmeLoginType: 6 })
+    } catch (error) {
+        if (Number(error?.code) !== 20279) throw error
+        resetMobileSession()
+        data = await callLoginApi('Login', loginParams, { tmeLoginType: 6 })
+    }
     return buildCookie(data)
 }
 
