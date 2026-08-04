@@ -1329,7 +1329,8 @@ const getAdminHtml = () => `<!DOCTYPE html>
             if (cookie.isValid === null || cookie.isValid === undefined) {
                 return '<span class="badge badge-warning">未验证</span>';
             } else if (cookie.isValid) {
-                let vipText = cookie.userInfo?.isVip ? ' VIP' : '';
+                const isSvip = Boolean(cookie.userInfo?.isSvip || cookie.userInfo?.canPlaySvip || Number(cookie.userInfo?.svipType) > 0 || String(cookie.userInfo?.vipStage || cookie.userInfo?.vip_stage || '').toLowerCase() === 'svip');
+                let vipText = isSvip ? ' SVIP' : (cookie.userInfo?.isVip ? ' VIP' : '');
                 return '<span class="badge badge-success">有效' + vipText + '</span>';
             } else {
                 return '<span class="badge badge-error">无效</span>';
@@ -1639,7 +1640,9 @@ const getAdminHtml = () => `<!DOCTYPE html>
             if (res?.success) {
                 if (res.data.isValid) {
                     let msg = 'Cookie验证有效';
-                    if (res.data.userInfo?.canPlayVip !== undefined) msg += res.data.userInfo.canPlayVip ? ' - 可播放VIP音乐' : ' - 不可播放VIP音乐';
+                    const isSvip = Boolean(res.data.userInfo?.isSvip || res.data.userInfo?.canPlaySvip || Number(res.data.userInfo?.svipType) > 0 || String(res.data.userInfo?.vipStage || res.data.userInfo?.vip_stage || '').toLowerCase() === 'svip');
+                    if (isSvip) msg += ' - 可播放SVIP音乐';
+                    else if (res.data.userInfo?.canPlayVip !== undefined) msg += res.data.userInfo.canPlayVip ? ' - 可播放VIP音乐' : ' - 不可播放VIP音乐';
                     showToast(msg, 'success');
                 } else showToast('Cookie验证失败: ' + (res.data.validationError || '无效'), 'error');
                 loadCookies(); loadDashboard();
@@ -1745,7 +1748,9 @@ const getAdminHtml = () => `<!DOCTYPE html>
             submitBtn.disabled = false; submitBtn.textContent = id ? '保存' : '保存并验证';
             if (res?.success) {
                 let msg = 'Cookie已保存';
-                if (!skipValidation && res.data?.userInfo?.canPlayVip !== undefined) msg += res.data.userInfo.canPlayVip ? ' - 可播放VIP音乐' : ' - 不可播放VIP音乐';
+                const isSvip = Boolean(res.data?.userInfo?.isSvip || res.data?.userInfo?.canPlaySvip || Number(res.data?.userInfo?.svipType) > 0 || String(res.data?.userInfo?.vipStage || res.data?.userInfo?.vip_stage || '').toLowerCase() === 'svip');
+                if (!skipValidation && isSvip) msg += ' - 可播放SVIP音乐';
+                else if (!skipValidation && res.data?.userInfo?.canPlayVip !== undefined) msg += res.data.userInfo.canPlayVip ? ' - 可播放VIP音乐' : ' - 不可播放VIP音乐';
                 showToast(msg, 'success'); closeModal('cookieModal'); loadCookies(); loadDashboard();
             } else showToast(res?.error || '保存失败', 'error');
         });

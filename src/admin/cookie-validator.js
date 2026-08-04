@@ -1,5 +1,15 @@
 import { request } from '../providers/netease/util.js'
 import { changeUrlQuery } from '../providers/tencent/util.js'
+
+const detectSvip = (...sources) => sources.some((source) => {
+    if (!source || typeof source !== 'object') return false
+    return source.isSvip === true
+        || source.is_svip === true
+        || source.svip === true
+        || source.superVip === true
+        || source.super_vip === true
+        || Number(source.svipType || source.svip_type || source.superVipType || source.super_vip_type) > 0
+})
 import { getQishuiProfile } from '../providers/qishui/index.js'
 
 const parseCookieString = (cookieString) => {
@@ -138,6 +148,7 @@ export const validateNeteaseCookie = async (cookieString) => {
 
         if (res.code === 200 && res.account) {
             const isVip = (res.profile?.vipType || 0) > 0
+            const isSvip = detectSvip(res.profile, res.account)
             let canPlayVip = isVip
             
             if (!isVip) {
@@ -153,6 +164,8 @@ export const validateNeteaseCookie = async (cookieString) => {
                     avatarUrl: res.profile?.avatarUrl || '',
                     vipType: res.profile?.vipType || 0,
                     isVip: isVip,
+                    isSvip,
+                    canPlaySvip: isSvip,
                     canPlayVip: canPlayVip
                 }
             }
@@ -232,6 +245,7 @@ export const validateTencentCookie = async (cookieString) => {
         if (result.req_0 && result.req_0.code === 0) {
             const userInfo = result.req_0.data
             const isVip = (userInfo?.vip || 0) > 0
+            const isSvip = detectSvip(userInfo)
             let canPlayVip = isVip
             
             if (!isVip) {
@@ -247,6 +261,8 @@ export const validateTencentCookie = async (cookieString) => {
                     avatarUrl: userInfo?.headpic || '',
                     vipType: userInfo?.vip || 0,
                     isVip: isVip,
+                    isSvip,
+                    canPlaySvip: isSvip,
                     canPlayVip: canPlayVip
                 }
             }
