@@ -66,7 +66,10 @@ const flacMetadata = (stsd) => {
     const index = stsd.data.indexOf(Buffer.from('dfLa'))
     if (index < 4) return Buffer.alloc(0)
     const size = stsd.data.readUInt32BE(index - 4)
-    return stsd.data.subarray(index + 4, Math.min(index - 4 + size, stsd.data.length))
+    const end = Math.min(index - 4 + size, stsd.data.length)
+    // ISO BMFF dfLa 的 payload 前 4 字节是 version + flags，
+    // FLAC 流只能从 metadata block header 开始，否则浏览器解码器会拒绝打开。
+    return stsd.data.subarray(index + 8, end)
 }
 
 export const decryptQishuiAudio = (source, spadeA) => {
@@ -126,13 +129,39 @@ const remember = (key, value) => {
     }
 }
 
-export const loadQishuiAudio = async (url, auth) => {
+export const isQishuiRequestAbort = (error, signal) => {
+    if (signal?.aborted) return true
+    return error?.name === 'AbortError' || error?.code === 'ABORT_ERR'
+        || /^(?:terminated|aborted)$/i.test(String(error?.message || '').trim())
+        || /(?:client|request|socket).*(?:closed|abort|reset)|aborted/i.test(String(error?.message || ''))
+}
+
+const fetchQishuiSource = async (url, signal) => {
+    try {
+        return await fetch(url, {
+            signal,
+            headers: { 'User-Agent': WEB_UA, Referer: 'https://www.qishui.com/' },
+        })
+    } catch (error) {
+        if (signal?.aborted || error?.name === 'AbortError') throw error
+        if (!/terminated|socket|reset|network/i.test(String(error?.message || ''))) throw error
+        // 汽水 CDN 偶发提前结束连接；保留同一 URL 重试一次，避免播放器收到 502。
+        return fetch(url, {
+            signal,
+            headers: { 'User-Agent': WEB_UA, Referer: 'https://www.qishui.com/' },
+        })
+    }
+}
+
+export const loadQishuiAudio = async (url, auth, signal) => {
     const key = crypto.createHash('sha1').update(`${url}\n${auth}`).digest('hex')
     const cached = cache.get(key)
     if (cached) { cached.at = Date.now(); return cached }
-    const response = await fetch(url, { headers: { 'User-Agent': WEB_UA, Referer: 'https://www.qishui.com/' } })
+    if (signal?.aborted) throw Object.assign(new Error('汽水音频请求已取消'), { name: 'AbortError' })
+    const response = await fetchQishuiSource(url, signal)
     if (!response.ok) throw new Error(`汽水音频下载失败: ${response.status}`)
     const raw = Buffer.from(await response.arrayBuffer())
+    if (signal?.aborted) throw Object.assign(new Error('汽水音频请求已取消'), { name: 'AbortError' })
     const result = auth ? decryptQishuiAudio(raw, auth) : {
         buffer: raw,
         contentType: response.headers.get('content-type') || 'audio/mp4',
@@ -145,7 +174,9 @@ export const qishuiAudioResponse = async (ctx) => {
     const url = ctx.req.query('url') || ''
     const auth = ctx.req.query('auth') || ''
     if (!/^https?:\/\//i.test(url)) return ctx.json({ error: 'invalid qishui audio url' }, 400)
-    const audio = await loadQishuiAudio(url, auth)
+    const signal = ctx.req.raw?.signal
+    const audio = await loadQishuiAudio(url, auth, signal)
+    if (signal?.aborted) throw Object.assign(new Error('汽水音频请求已取消'), { name: 'AbortError' })
     const total = audio.buffer.length
     const match = /^bytes=(\d*)-(\d*)$/i.exec(ctx.req.header('range') || '')
     let start = 0
@@ -163,11 +194,8 @@ export const qishuiAudioResponse = async (ctx) => {
     const headers = {
         'Content-Type': audio.contentType,
         'Accept-Ranges': 'bytes',
-        'Content-Length': String(end - start + 1),
         'Cache-Control': 'private, max-age=180',
     }
     if (status === 206) headers['Content-Range'] = `bytes ${start}-${end}/${total}`
     return new Response(audio.buffer.subarray(start, end + 1), { status, headers })
 }
-
-

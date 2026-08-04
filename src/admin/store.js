@@ -443,6 +443,7 @@ class DataStore {
                         source: metadata.source || existingCookie.source,
                         contributionKey: contributionKey || existingCookie.contributionKey,
                         providerName: metadata.providerName || existingCookie.providerName,
+                        contributionToken: String(metadata.contributionToken || existingCookie.contributionToken || '').trim(),
                     }, username, skipValidation)
                     if (updateResult.success) {
                         await this.addLog('cookie_update', `覆盖${platform} Cookie: ${note}`, username)
@@ -469,6 +470,7 @@ class DataStore {
             ,source: metadata.source || 'admin'
             ,contributionKey: contributionKey || ''
             ,providerName: String(metadata.providerName || '').trim().slice(0, 40)
+            ,contributionToken: String(metadata.contributionToken || '').trim()
         }
 
         if (!skipValidation) {

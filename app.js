@@ -9,7 +9,7 @@ import { logger } from 'hono/logger'
 import { cors } from 'hono/cors'
 import config from './src/config.js'
 import { get_runtime, get_url } from './src/util.js'
-import { qishuiAudioResponse } from './src/providers/qishui/audio.js'
+import { isQishuiRequestAbort, qishuiAudioResponse } from './src/providers/qishui/audio.js'
 
 const app = new Hono()
 
@@ -39,6 +39,10 @@ app.get('/audio/qishui', async (c) => {
     try {
         return await qishuiAudioResponse(c)
     } catch (error) {
+        if (isQishuiRequestAbort(error, c.req.raw?.signal)) {
+            // 浏览器切歌或重新请求 Range 时会主动关闭旧连接，不应伪装成播放失败。
+            return new Response(null, { status: 499 })
+        }
         console.error('[QishuiAudio]', error?.message || error)
         return c.json({ error: error?.message || 'qishui audio failed' }, 502)
     }

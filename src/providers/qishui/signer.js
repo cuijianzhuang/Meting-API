@@ -63,7 +63,10 @@ const getBrowser = async () => {
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process',
+            // Passport 在本地安全页发起跨站 XHR；阻断第三方 Cookie 会导致
+            // 扫码状态成功但 sessionid 永远无法写入隔离浏览器会话。
+            '--disable-features=IsolateOrigins,site-per-process,BlockThirdPartyCookies,ThirdPartyStoragePartitioning',
+            '--disable-third-party-cookies',
         ],
     }).catch(error => {
         browserPromise = null
@@ -120,7 +123,7 @@ const getPage = async (sessionKey) => {
 }
 
 export const signQishuiRequest = async ({ sessionKey, method, url, headers, body, msToken }) => {
-    const { page } = await getPage(sessionKey)
+    const { page, context } = await getPage(sessionKey)
     await page.evaluate(token => {
         localStorage.setItem('xmst', token)
         localStorage.setItem('xmsty', token)
@@ -147,7 +150,9 @@ export const signQishuiRequest = async ({ sessionKey, method, url, headers, body
         status: response.status,
         body: response.body,
         signedUrl,
-        cookies: await page.cookies('https://api.qishui.com', 'https://bff-pc.qishui.com'),
+        // 登录完成后的 sessionid 可能由 Passport/抖音域名下发；限定
+        // api.qishui.com 会导致扫码成功但拿不到完整登录态。
+        cookies: await context.cookies(),
     }
 }
 

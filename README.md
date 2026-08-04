@@ -66,7 +66,6 @@
 | `aidj` | AI DJ |
 | `SCENE_RCMD` / `SCENE_RCMD:FOCUS` 等 | 场景漫游（子模式：`EXERCISE` / `FOCUS` / `NIGHT_EMO`） |
 
-> 网易和汽水都需要有效登录 Cookie 才能获取个性化漫游。汽水不使用网易的模式参数；汽水没有登录态时返回空列表。
 
 ### 媒体
 
@@ -248,7 +247,7 @@ curl -X POST 'https://你的域名/admin/cookies' \
   -d '{"platform":"qishui","cookie":"sessionid=你的值; sessionid_ss=你的值","note":"汽水基础账号"}'
 ```
 
-汽水 Cookie 可用于登录搜索、歌曲详情、播放地址和个性化漫游。其中 `type=fm` 必须存在有效汽水登录 Cookie。
+汽水 Cookie 可用于登录搜索、歌曲详情、播放地址和最近播放漫游。其中 `type=fm` 必须存在有效汽水登录 Cookie；该接口先返回歌曲候选，播放地址仍需通过 `type=url` 单独获取。
 
 > 汽水当前登录态是会话 Cookie，Meting 没有可稳定使用的公开 `refresh_token` 续期接口，因此不能像 QQ 音乐一样后台无感刷新。系统会自动定时验证汽水 Cookie；验证失败会发送监测通知。重新扫码或手动添加新 Cookie 时使用相同备注，系统会自动覆盖旧 Cookie。
 

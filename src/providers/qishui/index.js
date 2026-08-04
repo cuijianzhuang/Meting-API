@@ -1,14 +1,32 @@
+import { createHash, randomBytes } from 'node:crypto'
+
 const PUBLIC_SEARCH = 'https://api-vehicle.volcengine.com/v2/search/type'
 const PUBLIC_DETAIL = 'https://api-vehicle.volcengine.com/v2/custom/contents'
 const PC_API = 'https://api.qishui.com'
-const PUBLIC_PLAYBACK = 'https://beta-luna.douyin.com/luna/h5/seo_track'
 
-const WEB_UA = 'LunaPC/3.3.0(359450208)'
-const WEB_BASES = ['https://api5-lq.qishui.com', PC_API]
+// 扫码拿到的是 Passport 网页会话，PC 接口必须使用与 qishui-api 一致的
+// 稳定客户端指纹；每次请求重新生成设备参数会触发“应用版本有风险”。
+const WEB_UA = 'LunaPC/3.0.0(290101097)'
+const PC_DEVICE_ID = String(Date.now())
+const PC_FP = PC_DEVICE_ID
+
+// song-tab 的推荐上下文需要跨请求保留；只保存不可逆的账号指纹和歌曲 ID，不保存 Cookie。
+const feedSessions = new Map()
+const FEED_SESSION_LIMIT = 80
 
 const text = (value) => String(value ?? '').trim()
 const object = (...values) => values.find(value => value && typeof value === 'object' && !Array.isArray(value)) || {}
 const array = (...values) => values.find(Array.isArray) || []
+
+const feedSessionKey = (cookie, mode) => {
+    const input = `${normalizeCookie(cookie)}|${text(mode).toUpperCase()}`
+    let hash = 2166136261
+    for (let i = 0; i < input.length; i += 1) {
+        hash ^= input.charCodeAt(i)
+        hash = Math.imul(hash, 16777619)
+    }
+    return `${hash >>> 0}`
+}
 
 const normalizeCookie = (raw) => {
     const values = new Map()
@@ -24,16 +42,18 @@ const normalizeCookie = (raw) => {
 
 export const qishuiCookieHasLogin = (raw) => {
     const cookie = normalizeCookie(raw).toLowerCase()
-    return /(?:^|;\s*)(?:sessionid|sessionid_ss|sid_guard|uid_tt|passport_csrf_token)=/.test(cookie)
+    // Passport 确认后可能只下发 sessionid_ss；它是汽水当前网页登录态的一部分。
+    return /(?:^|;\s*)(?:sessionid|sessionid_ss|sid_guard|sid_tt)=/.test(cookie)
 }
 
 const pcParams = (extra = {}) => {
-    const now = Date.now()
     return {
         aid: '386088', app_name: 'luna_pc', region: 'cn', geo_region: 'cn', os_region: 'cn',
-        device_id: String(now), iid: String(now + 1), version_name: '3.3.0', version_code: '30030000',
-        channel: 'official', build_mode: 'master', ac: 'wifi', tz_name: 'Asia/Shanghai',
-        device_platform: 'windows', device_type: 'Windows', os_version: 'Windows 11', fp: String(now),
+        sim_region: '', device_id: PC_DEVICE_ID, cdid: '',
+        version_name: '3.0.0', version_code: '30000000', channel: 'official', build_mode: 'master',
+        network_carrier: '', ac: 'wifi', tz_name: 'Asia/Shanghai', resolution: '',
+        device_platform: 'windows', device_type: 'Windows', os_version: 'Windows 11', fp: PC_FP,
+        iid: '',
         ...extra,
     }
 }
@@ -50,23 +70,26 @@ const requestJson = async (url, { cookie = '', method = 'GET', body, timeout = 1
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeout)
     try {
-        const response = await fetch(url, {
-            method,
-            body: body === undefined ? undefined : JSON.stringify(body),
-            signal: controller.signal,
-            headers: {
+        const bodyText = body === undefined ? undefined : JSON.stringify(body)
+        const traceId = `00-${randomBytes(16).toString('hex')}-${randomBytes(8).toString('hex')}-01`
+        const headers = {
                 Accept: 'application/json,text/plain,*/*',
                 'Content-Type': 'application/json; charset=utf-8',
                 'User-Agent': WEB_UA,
                 Referer: 'https://www.qishui.com/',
+                'x-luna-background-type': 'foreground',
+                'x-luna-is-background-req': '0',
+                'x-luna-is-local-user': '1',
+                'x-tt-trace-id': traceId,
+                ...(bodyText ? { 'X-SS-STUB': createHash('md5').update(bodyText).digest('hex').toUpperCase() } : {}),
                 ...(cookie ? { Cookie: normalizeCookie(cookie) } : {}),
-                ...(cookie ? {
-                    'x-luna-background-type': 'foreground',
-                    'x-luna-is-background-req': '0',
-                    'x-luna-is-local-user': '1',
-                } : {}),
                 ...extraHeaders,
-            },
+        }
+        const response = await fetch(url, {
+            method,
+            body: bodyText,
+            signal: controller.signal,
+            headers,
         })
         if (!response.ok) throw new Error(`汽水接口返回 ${response.status}`)
         const json = await response.json()
@@ -79,17 +102,38 @@ const requestJson = async (url, { cookie = '', method = 'GET', body, timeout = 1
     }
 }
 
+const joinUrl = (base, path) => `${text(base).replace(/\/+$/, '')}/${text(path).replace(/^\/+/, '')}`
+
+// 汽水图片接口返回的是“域名目录 + uri + 模板参数”，不能只取 url_list
+// 里的目录，否则前端拿到的地址只会停在 /img/，浏览器无法显示封面。
+const imageDescriptorUrl = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return ''
+    const uri = text(value.uri || value.image_uri || value.imageUri)
+    const bases = value.url_list || value.urlList || value.urls
+    if (!uri || !Array.isArray(bases)) return ''
+    const base = bases.find((item) => typeof item === 'string' && /^https?:\/\//i.test(item))
+    if (!base) return ''
+    const prefix = text(value.template_prefix || value.templatePrefix)
+    const suffix = prefix ? `~${prefix}-crop-center:192:192.jpg` : ''
+    return joinUrl(base, `${uri}${suffix}`)
+}
+
 const firstUrl = (value) => {
     if (typeof value === 'string' && /^https?:\/\//i.test(value)) return value
     if (Array.isArray(value)) return value.map(firstUrl).find(Boolean) || ''
     if (value && typeof value === 'object') {
-        return firstUrl(value.url_list || value.urlList || value.urls || value.uri || value.url)
+        return imageDescriptorUrl(value)
+            || firstUrl(value.url_list || value.urlList || value.urls || value.uri || value.url)
     }
     return ''
 }
 
 const collectMedia = (payload) => {
-    const root = payload?.data || payload || {}
+    const wrapped = payload?.data
+    const root = wrapped && typeof wrapped === 'object'
+        && ['items', 'tracks', 'track_list', 'songs', 'media_resources'].some(key => Array.isArray(wrapped[key]))
+        ? wrapped
+        : payload || {}
     const direct = array(
         root.media_resources, root.media_list, root.related_media, root.medias, root.media,
         root.tracks, root.track_list, root.songs, root.items, root.list, root.result,
@@ -170,7 +214,13 @@ const mapMedia = (raw, index = 0) => {
         name,
         artist,
         album: text(album.name || album.title || raw?.album_name || base.album_name),
-        pic: firstUrl(display.cover_url || base.cover_url || track.cover_url || raw?.cover_url || raw?.cover || album.cover_url),
+        pic: firstUrl(
+            display.cover_url || display.url_cover || display.cover ||
+            base.cover_url || base.url_cover || base.cover ||
+            track.cover_url || track.url_cover || track.cover ||
+            raw?.cover_url || raw?.url_cover || raw?.cover ||
+            album.cover_url || album.url_cover || album.cover,
+        ),
         duration: seconds(base.duration_ms || base.duration || track.duration_ms || track.duration || raw?.duration_ms || raw?.duration),
         url: id,
         lrc: id,
@@ -200,6 +250,49 @@ const get_search_songs = async (keyword, cookie) => {
     return publicSearch(keyword)
 }
 
+const collectPlaylists = (payload) => {
+    const playlists = []
+    const seen = new Set()
+    const visit = (node, depth = 0) => {
+        if (!node || depth > 8) return
+        if (Array.isArray(node)) {
+            node.slice(0, 200).forEach(item => visit(item, depth + 1))
+            return
+        }
+        if (typeof node !== 'object') return
+        const playlist = object(node.playlist, node.entity?.playlist)
+        const id = text(playlist.id || playlist.playlist_id)
+        if (id && !seen.has(id)) {
+            seen.add(id)
+            playlists.push({
+                id,
+                name: text(playlist.name || playlist.title) || '未命名歌单',
+                cover: firstUrl(playlist.cover_url || playlist.cover || playlist.url_cover || playlist.coverURL),
+                creator: text(playlist.creator_name || playlist.creator?.nickname || playlist.creator?.name),
+                trackCount: Number(playlist.track_count || playlist.count_tracks || playlist.song_count || 0) || 0,
+                playCount: Number(playlist.play_count || playlist.playcount || 0) || 0,
+            })
+        }
+        Object.values(node).slice(0, 200).forEach(item => visit(item, depth + 1))
+    }
+    visit(payload)
+    return playlists
+}
+
+const get_search_playlists = async (keyword, cookie) => {
+    if (!text(keyword)) return []
+    const params = pcParams({ q: text(keyword), cursor: '0', search_method: 'input', search_scene: '' })
+    try {
+        const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/search/playlist`, params), { cookie })
+        const playlists = collectPlaylists(json)
+        if (playlists.length) return playlists
+    } catch (error) { console.warn('[Qishui] 歌单搜索回退:', error.message) }
+    try {
+        const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/search/mixed`, params), { cookie })
+        return collectPlaylists(json)
+    } catch (error) { console.warn('[Qishui] 混合搜索歌单失败:', error.message); return [] }
+}
+
 const getPublicDetail = async (id) => {
     const json = await requestJson(urlWithParams(PUBLIC_DETAIL, {
         sources: 'qishui', need_author: true, need_album: true, need_ugc: true, need_stat: true, item_ids: id,
@@ -208,12 +301,17 @@ const getPublicDetail = async (id) => {
 }
 
 const get_song_info = async (id, cookie) => {
-    if (qishuiCookieHasLogin(cookie)) {
+    // 登录态下统一读取 PC track_v2，避免详情接口混入试听数据。
+    if (text(cookie)) {
         try {
-            const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, pcParams({ track_id: id, media_type: 'track' })), { cookie })
-            const item = mapMedia(object(json?.data?.track, json?.track, json?.data, json))
+            const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, pcParams({
+                track_id: id,
+                media_type: 'track',
+                queue_type: '',
+            })), { cookie, timeout: 12000 })
+            const item = collectMedia(json).map(mapMedia).find(Boolean)
             if (item) return [item]
-        } catch (error) { console.warn('[Qishui] 登录详情回退:', error.message) }
+        } catch {}
     }
     const item = mapMedia(await getPublicDetail(id))
     return item ? [item] : []
@@ -258,14 +356,7 @@ const findLyrics = (payload) => {
 }
 
 const get_lyric = async (id, cookie) => {
-    try {
-        const seo = await requestJson(urlWithParams('https://beta-luna.douyin.com/luna/h5/seo_track', {
-            track_id: id, device_platform: 'web',
-        }))
-        const found = findLyrics(seo)
-        if (found.lyric) return found
-    } catch {}
-    if (qishuiCookieHasLogin(cookie)) {
+    if (text(cookie)) {
         try {
             const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, pcParams({ track_id: id, media_type: 'track' })), { cookie })
             const found = findLyrics(json)
@@ -291,7 +382,9 @@ const streamFrom = (value, inherited = {}) => {
     const format = text(value.format || value.Format || value.vtype || meta.format)
     const authInfo = object(value.encrypt_info, value.EncryptInfo, value.encryptInfo)
     const auth = text(value.play_auth || value.PlayAuth || value.spade_a || authInfo.spade_a || inherited.auth)
-    return { url, auth, bitrate, quality, format, duration: seconds(value.duration || inherited.duration) }
+    let isVideo = /video/i.test(format)
+    try { isVideo ||= /(?:^|_)video_/i.test(new URL(url).searchParams.get('mime_type') || '') } catch {}
+    return { url, auth, bitrate, quality, format, isVideo, duration: seconds(value.duration || inherited.duration) }
 }
 
 const collectStreams = (payload) => {
@@ -329,6 +422,8 @@ const collectStreams = (payload) => {
 const qualityRank = (stream) => {
     const label = `${stream.quality} ${stream.format}`.toLowerCase()
     const bitrate = stream.bitrate > 10000 ? stream.bitrate / 1000 : stream.bitrate
+    if (/studio|recording|录音室/.test(label)) return 130
+    if (/atmos|dolby|spatial|全景/.test(label)) return 120
     if (/hires|master/.test(label)) return 110
     if (/lossless|flac|sq/.test(label) || bitrate >= 900) return 100
     if (/highest|excellent|superhigh|hq/.test(label)) return 80
@@ -337,53 +432,29 @@ const qualityRank = (stream) => {
 }
 
 const requestedRank = (quality) => {
+    if (/studio|recording/.test(quality)) return 130
+    if (/atmos|dolby|spatial/.test(quality)) return 120
     if (/hires|master/.test(quality)) return 110
     if (/flac|lossless/.test(quality)) return 100
     if (/320|exhigh|higher/.test(quality)) return 70
     return 50
 }
 
-// Public share playback fallback, adapted from jiuhunwl/music_jx (MIT).
-// It only exposes the free AAC/M4A stream and never grants member-only quality.
-const get_public_song_url = async (id) => {
-    const json = await requestJson(urlWithParams(PUBLIC_PLAYBACK, { track_id: id, device_platform: 'web' }))
-    const player = object(json?.track_player)
-    try {
-        const model = typeof player.video_model === 'string' ? JSON.parse(player.video_model) : player.video_model
-        const stream = array(model?.video_list)[0]
-        const url = text(stream?.main_url || stream?.backup_url)
-        if (url) {
-            return {
-                url,
-                quality: 'standard',
-                duration: Number(stream?.video_meta?.duration || 0) || undefined,
-            }
-        }
-    } catch {}
-    const playInfoUrl = text(player.url_player_info)
-    if (playInfoUrl) {
-        const info = await requestJson(playInfoUrl)
-        const stream = array(info?.Result?.Data?.PlayInfoList)[0]
-        const url = text(stream?.MainPlayUrl || stream?.BackupPlayUrl)
-        if (url) return { url, quality: 'standard' }
-    }
-    return null
-}
+const selectSongStream = (streams, options = {}) => {
+    const audioStreams = streams.filter(stream => !stream.isVideo)
+    // 只有视频流时直接判定无链，禁止把 video_mp4 当音频返回。
+    if (!audioStreams.length) return null
+    const playableStreams = audioStreams.sort((a, b) => qualityRank(b) - qualityRank(a))
+    if (!playableStreams.length) return null
 
-const get_song_url = async (id, cookie, options = {}) => {
-    if (!qishuiCookieHasLogin(cookie)) return get_public_song_url(id)
-    const body = { track_id: id, media_type: 'track', queue_type: 'favorite_track_playlist', scene_name: 'library' }
-    let json
-    try {
-        json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, pcParams()), { cookie, method: 'POST', body })
-    } catch {
-        json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, pcParams({ track_id: id, media_type: 'track' })), { cookie })
-    }
-    const streams = collectStreams(json).sort((a, b) => qualityRank(b) - qualityRank(a))
-    if (!streams.length) return null
     const target = requestedRank(text(options.quality).toLowerCase())
-    const selected = streams.find(stream => qualityRank(stream) <= target) || streams[streams.length - 1]
-    const level = qualityRank(selected) >= 100 ? 'lossless' : qualityRank(selected) >= 70 ? 'exhigh' : 'standard'
+    const selected = playableStreams.find(stream => qualityRank(stream) <= target)
+        || playableStreams[playableStreams.length - 1]
+    const selectedRank = qualityRank(selected)
+    const level = selectedRank >= 130 ? 'studio'
+        : selectedRank >= 120 ? 'atmos'
+            : selectedRank >= 100 ? 'lossless'
+                : selectedRank >= 70 ? 'exhigh' : 'standard'
     return {
         url: selected.url,
         auth: selected.auth,
@@ -392,33 +463,185 @@ const get_song_url = async (id, cookie, options = {}) => {
     }
 }
 
-const get_personal_fm = async (_mode, cookie) => {
-    if (!qishuiCookieHasLogin(cookie)) return []
-    const params = pcParams({ cursor: 0, cnt: 12, count: 12 })
-    for (const base of WEB_BASES) {
-      for (const path of ['/luna/feed/song-tab', '/luna/pc/feed/song-tab']) {
-        try {
-            const json = await requestJson(urlWithParams(`${base}${path}`, params), {
-              cookie,
-              headers: { Referer: 'https://www.qishui.com/' },
-            })
-            const songs = collectMedia(json).map(mapMedia).filter(Boolean)
-            if (songs.length) return songs
-        } catch (error) { console.warn(`[Qishui] 漫游 ${path} 失败:`, error.message) }
-      }
-    }
-    // 推荐接口受限时，使用已登录账号的最近播放和收藏作为房间漫游候选。
-    for (const path of ['/luna/pc/me/recently-played-media', '/luna/pc/me/collection/mixed']) {
-      try {
-        const json = await requestJson(urlWithParams(`${PC_API}${path}`, pcParams({ cursor: '', count: 30 })), { cookie })
-        const songs = collectMedia(json).map(mapMedia).filter(Boolean)
-        if (songs.length) return songs
-      } catch (error) { console.warn(`[Qishui] 漫游回退 ${path} 失败:`, error.message) }
-    }
-    return []
+// 扫码会话使用 PC track_v2 获取完整曲目流。推荐漫游的 PC 请求必须带
+// daily_mix / track_reco 场景，否则同一首歌可能只返回试听或不完整音源。
+const get_pc_song_url = async (id, cookie, options = {}) => {
+    const queueType = text(options.queueType) || 'daily_mix'
+    const sceneName = text(options.sceneName) || 'track_reco'
+    const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, pcParams()), {
+        cookie,
+        method: 'POST',
+        body: {
+            media_type: 'track',
+            queue_type: queueType,
+            scene_name: sceneName,
+            track_id: id,
+        },
+        timeout: 12000,
+    })
+    return selectSongStream(collectStreams(json), options)
 }
 
-const support_type = ['url', 'lrc', 'song', 'pic', 'search', 'fm']
+const get_song_url = async (id, cookie, options = {}) => {
+    // 汽水播放只接受带登录 Cookie 的 PC 完整流；无 Cookie 直接无链。
+    if (!text(cookie)) return null
+    try {
+        return await get_pc_song_url(id, cookie, options)
+    } catch {
+        // PC 完整流失败交给客户端跨源回退，不降级到其它试听流。
+        return null
+    }
+}
+
+const buildFeedPreference = (mode) => {
+    const raw = text(mode)
+    const upper = raw.toUpperCase()
+
+    // DEFAULT 是汽水自己的“推荐”模式。不要人为塞入 scene_mode_id，
+    // 让 PC 接口按默认推荐上下文返回；后续取流仍使用 daily_mix/track_reco。
+    if (!raw || upper === 'DEFAULT') return {}
+
+    // 场景模式仍使用数字 scene_mode_id；同时兼容显式的 scene_mode_id:6 写法。
+    const sceneMatch = /^(?:SCENE_MODE_ID[:_])?(\d+)$/.exec(raw)
+    const sceneModeId = sceneMatch ? Number(sceneMatch[1]) : 0
+    if (Number.isInteger(sceneModeId) && sceneModeId > 0) {
+        return { scene_mode_id: sceneModeId }
+    }
+
+    // song-tab 的熟悉/新鲜等模式使用 preference_mode。未知字符串先透传，
+    // 等拿到对应抓包值后再补别名，避免把它误当成场景数字。
+    const preferenceMode = raw.replace(/^PREFERENCE_MODE[:_]/i, '').trim().toLowerCase()
+    return /^[a-z][a-z0-9_-]*$/.test(preferenceMode)
+        ? { preference_mode: preferenceMode }
+        : {}
+}
+
+const get_personal_fm = async (mode, cookie) => {
+    if (!qishuiCookieHasLogin(cookie)) return []
+
+    // PC 客户端漫游使用 feed/song-tab，一次返回一批推荐歌曲；不再调用
+    // 移动端发现页或电台接口。DEFAULT 由 PC 接口提供默认推荐，
+    // 熟悉/新鲜模式走 preference_mode，场景模式走 scene_mode_id。
+    const feedPreference = buildFeedPreference(mode)
+    const isDefaultMode = !text(mode) || text(mode).toUpperCase() === 'DEFAULT'
+    const sessionKey = feedSessionKey(cookie, mode)
+    const session = feedSessions.get(sessionKey) || {
+        didFirstUseTime: Math.floor(Date.now() / 1000),
+        isFirstRequest: true,
+        playedMedia: [],
+    }
+    try {
+        const json = await requestJson(
+            urlWithParams(`${PC_API}/luna/pc/feed/song-tab`, pcParams()),
+            {
+                cookie,
+                method: 'POST',
+                body: {
+                    feed_counts: { mix_session_count: 1 },
+                    // 该字段表示客户端是否完成过汽水首次引导，不等同于本次请求次数。
+                    // 抓包显示漫游会话中持续为 false。
+                    is_did_first_request: false,
+                    is_first_request: session.isFirstRequest,
+                    played_media: session.playedMedia,
+                    ...(isDefaultMode
+                        ? { did_first_use_time: session.didFirstUseTime }
+                        : { feed_preference: feedPreference }),
+                },
+                timeout: 12000,
+            },
+        )
+        const songs = collectMedia(json).map(mapMedia).filter(Boolean)
+        // 接口没有回传“已播放”确认事件，只记录本会话已下发过的歌曲，避免连续请求重复推荐。
+        const nextPlayed = [
+            ...session.playedMedia,
+            ...songs.map(song => ({
+                duration: Number(song.duration) > 0
+                    ? (Number(song.duration) > 10000 ? Number(song.duration) : Number(song.duration) * 1000)
+                    : 0,
+                media_id: String(song.id),
+                played_mills: -1,
+                type: 'track',
+            })).filter(item => item.media_id),
+        ]
+        session.isFirstRequest = false
+        const uniquePlayed = new Map()
+        nextPlayed.forEach(item => uniquePlayed.set(item.media_id, item))
+        session.playedMedia = [...uniquePlayed.values()].slice(-FEED_SESSION_LIMIT)
+        feedSessions.set(sessionKey, session)
+        if (feedSessions.size > 200) {
+            const oldest = feedSessions.keys().next().value
+            if (oldest) feedSessions.delete(oldest)
+        }
+        return songs
+    } catch (error) {
+        console.warn('[Qishui] PC 漫游失败:', error.message)
+        return []
+    }
+}
+
+const normalizeMembershipKey = (value) => text(value).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '')
+
+const membershipPositive = (value) => {
+    if (value === true) return true
+    if (typeof value === 'number') return Number.isFinite(value) && value > 0
+    const valueText = text(value).toLowerCase()
+    return /^(true|yes|active|valid|enabled|opened|vip|svip|premium|member|会员|已开通|有效)$/.test(valueText)
+}
+
+const membershipLevel = (value) => {
+    const valueText = text(value).toLowerCase().replace(/[\s_-]+/g, '')
+    if (/^(svip|supervip|超级会员|超级vip|豪华会员)$/.test(valueText)) return 'svip'
+    if (/^(vip|premium|member|会员|普通会员)$/.test(valueText)) return 'vip'
+    return ''
+}
+
+// 只读取明确的会员字段，不能把 svip_expire_time 等升级/过期字段当成 SVIP。
+export const parseQishuiMembership = (payload) => {
+    const vipNumberKeys = new Set(['viptype', 'viplevel', 'membertype', 'memberlevel', 'musicviptype', 'musicviplevel'])
+    const svipNumberKeys = new Set(['sviptype', 'sviplevel', 'superviptype', 'superviplevel'])
+    const vipFlagKeys = new Set(['isvip', 'ismember', 'hasvip', 'hasmembership', 'vipactive', 'vipenabled'])
+    const svipFlagKeys = new Set(['issvip', 'issupervip', 'hassvip', 'hassupervip', 'svipactive', 'svipenabled'])
+    const labelKeys = new Set(['viplevelname', 'vipname', 'memberlevelname', 'membername', 'membershiplevel', 'membershiptype'])
+    let known = false
+    let isVip = false
+    let isSvip = false
+    let visited = 0
+    const visit = (node, depth) => {
+        if (!node || typeof node !== 'object' || depth > 6 || visited > 600) return
+        visited += 1
+        if (Array.isArray(node)) {
+            node.slice(0, 120).forEach((item) => visit(item, depth + 1))
+            return
+        }
+        for (const [key, value] of Object.entries(node).slice(0, 180)) {
+            const normalized = normalizeMembershipKey(key)
+            if (svipNumberKeys.has(normalized)) {
+                known = true
+                if (Number(value) > 0) isSvip = true
+            } else if (vipNumberKeys.has(normalized)) {
+                known = true
+                if (Number(value) > 0) isVip = true
+            } else if (svipFlagKeys.has(normalized)) {
+                known = true
+                if (membershipPositive(value)) isSvip = true
+            } else if (vipFlagKeys.has(normalized)) {
+                known = true
+                if (membershipPositive(value)) isVip = true
+            } else if (labelKeys.has(normalized)) {
+                known = true
+                const level = membershipLevel(value)
+                if (level === 'svip') isSvip = true
+                else if (level === 'vip') isVip = true
+            }
+            if (value && typeof value === 'object') visit(value, depth + 1)
+        }
+    }
+    visit(payload, 0)
+    if (isSvip) isVip = true
+    return { known, isVip, isSvip }
+}
+
+const support_type = ['url', 'lrc', 'song', 'pic', 'search', 'search_playlist', 'fm']
 
 const handle = async (type, id, cookie = '', options = {}) => {
     if (type === 'search') return get_search_songs(id, cookie)
@@ -426,6 +649,7 @@ const handle = async (type, id, cookie = '', options = {}) => {
     if (type === 'pic') return (await get_song_info(id, cookie))[0]?.pic || ''
     if (type === 'lrc') return get_lyric(id, cookie)
     if (type === 'url') return get_song_url(id, cookie, options)
+    if (type === 'search_playlist') return get_search_playlists(id, cookie)
     if (type === 'fm') return get_personal_fm(id, cookie)
     return -1
 }
@@ -436,21 +660,10 @@ export const getQishuiProfile = async (cookie) => {
         const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/me`, pcParams()), { cookie, timeout: 8000 })
         const root = json?.data || json || {}
         const user = object(root.my_info, root.myInfo, root.user, root.user_info, root.account, root.me, root)
-        let isVip = false
-        let isSvip = false
-        let membershipKnown = false
-        const visit = (node, depth = 0) => {
-            if (!node || typeof node !== 'object' || depth > 6) return
-            Object.entries(node).slice(0, 180).forEach(([key, value]) => {
-                const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '')
-                const positive = value === true || (Number.isFinite(Number(value)) && Number(value) > 0) || /^(vip|svip|active|valid|会员)$/i.test(text(value))
-                if (/svip|supervip/.test(normalized)) { membershipKnown = true; if (positive) isSvip = true }
-                else if (/vip|member/.test(normalized)) { membershipKnown = true; if (positive) isVip = true }
-                if (value && typeof value === 'object') visit(value, depth + 1)
-            })
-        }
-        visit(root)
-        if (isSvip) isVip = true
+        const membership = parseQishuiMembership(root)
+        // 仅使用 PC 会员接口中明确的汽水会员字段；普通 VIP 不会被当作 SVIP。
+        const isVip = membership.isVip || membership.isSvip
+        const isSvip = membership.isSvip
         return {
             valid: true,
             error: null,
@@ -463,7 +676,7 @@ export const getQishuiProfile = async (cookie) => {
                 vipType: isSvip ? 2 : isVip ? 1 : 0,
                 canPlayVip: isVip,
                 canPlaySvip: isSvip,
-                membershipKnown,
+                membershipKnown: membership.known,
             },
         }
     } catch (error) {

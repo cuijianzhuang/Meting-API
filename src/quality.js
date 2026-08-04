@@ -8,7 +8,7 @@ export const VALID_QUALITY = {
         'jyeffect', 'sky', 'jymaster', 'dolby',
     ],
     qishui: [
-        '128', 'standard', 'higher', '320', 'exhigh', 'flac', 'lossless', 'hires', 'master',
+        '128', 'standard', '320', 'exhigh', 'studio', 'atmos', 'flac', 'lossless',
     ],
 }
 
@@ -33,8 +33,10 @@ export const QUALITY_META = {
     'jymaster': { name: '超清母带', vip: false, svip: true },
     'dolby': { name: '杜比全景声', vip: false, svip: true },
     // QQ 音乐（超级会员独家）
-    'atmos': { name: '臻品全景声', tencent: '臻品全景声', vip: false, svip: true },
+    'atmos': { name: '臻品全景声', qishui: '全景声', tencent: '臻品全景声', vip: false, svip: true },
     'master': { name: '臻品母带', tencent: '臻品母带', vip: false, svip: true },
+    // 汽水音乐：录音室音质 / 全景声 / 无损仅 SVIP 可用
+    'studio': { name: '录音室音质', qishui: '录音室音质', vip: false, svip: true },
 }
 
 export const isValidQuality = (server, quality) => {
@@ -47,6 +49,7 @@ export const getQualityName = (quality, server) => {
     const meta = QUALITY_META[quality.toLowerCase()]
     if (!meta) return quality
     if (server === 'tencent' && meta.tencent) return meta.tencent
+    if (server === 'qishui' && meta.qishui) return meta.qishui
     return meta.name
 }
 

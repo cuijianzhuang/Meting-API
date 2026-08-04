@@ -297,6 +297,10 @@ export const adminRoutes = (app) => {
         }
         const userId = String(validation.userInfo?.userId || '').trim()
         const displayName = provider || '匿名用户'
+        const revokeToken = String(body.revokeToken || '').trim()
+        if (!/^[A-Za-z0-9_-]{16,64}$/.test(revokeToken)) {
+            return c.json({ success: false, error: '共享撤销令牌无效' }, 400)
+        }
         const contributionKey = `${platform}:${userId || provider || 'anonymous'}`
         const legacyNote = `contribution:${contributionKey}`
         const note = `首页共享 · ${displayName}`
@@ -305,14 +309,31 @@ export const adminRoutes = (app) => {
             contributionKey,
             legacyNote,
             providerName: displayName,
+            contributionToken: revokeToken,
         })
         if (!result.success) return c.json(result, 400)
         return c.json({
             success: true,
             data: formatCookieForDisplay(result.data),
+            revokeToken,
             updated: true,
             message: '共享成功，谢谢你帮大家点亮更多好歌 ♪',
         })
+    })
+
+    app.post('/admin/contributions/revoke', authMiddleware, async (c) => {
+        const body = await c.req.json()
+        const token = String(body.revokeToken || '').trim()
+        if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) {
+            return c.json({ success: false, error: '撤销 ID 无效' }, 400)
+        }
+        const cookie = store.getCookies().find(item => (
+            item.source === 'contribution'
+            && item.contributionToken === token
+        ))
+        if (!cookie) return c.json({ success: false, error: '找不到对应的共享记录，可能已经取消' }, 404)
+        const result = await store.deleteCookie(cookie.id, c.get('username'))
+        return c.json(result, result.success ? 200 : 400)
     })
 
     app.get('/admin/contributions', authMiddleware, async (c) => {

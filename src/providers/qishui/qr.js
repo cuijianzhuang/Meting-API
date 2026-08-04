@@ -5,8 +5,7 @@ import { closeQishuiSignerSession, signQishuiRequest } from './signer.js'
 
 const API_BASE = 'https://api.qishui.com'
 const AID = '386088'
-const APP_VERSION = '3.5.2'
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 SodaMusic/3.2.1 Electron/36.4.0 Safari/537.36'
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) SodaMusic/3.2.1 Chrome/136.0.7103.59 Electron/36.4.0 Safari/537.36'
 const SESSION_TTL_MS = 10 * 60 * 1000
 const MIN_CHECK_INTERVAL_MS = 2500
 const sessions = new Map()
@@ -51,6 +50,7 @@ const createSession = () => {
         cookie: '',
         createdAt: Date.now(),
         lastCheckAt: 0,
+        cooldownUntil: 0,
         lastResult: null,
         checkPromise: null,
     }
@@ -98,7 +98,7 @@ const commonParams = (session) => ({
     did: session.deviceId,
     iid: session.installId,
     device_platform: 'PC',
-    version_code: APP_VERSION,
+    version_code: '3.5.2',
     account_sdk_source_info: '00',
     msToken: session.msToken,
 })
@@ -131,6 +131,20 @@ const collectResponseCookies = (response) => {
     return response.headers.get('set-cookie') || ''
 }
 
+const extractSessionId = (values) => {
+    const list = Array.isArray(values) ? values : [values]
+    for (const value of list) {
+        const match = String(value || '').match(/(?:^|[;,]\s*)sessionid=([^;,\s]+)/i)
+        if (match?.[1]) return match[1]
+    }
+    return ''
+}
+
+const cookieNames = (cookie) => String(cookie || '')
+    .split(';')
+    .map((item) => item.split('=', 1)[0].trim())
+    .filter(Boolean)
+
 const requestPassport = async (session, method, pathname, params = {}, bodyValues = null) => {
     const url = buildUrl(pathname, { ...commonParams(session), ...params })
     const headers = {
@@ -154,9 +168,12 @@ const requestPassport = async (session, method, pathname, params = {}, bodyValue
         body,
         msToken: session.msToken,
     })
+    const responseCookies = Array.isArray(response.cookies)
+        ? response.cookies.map(cookie => `${cookie.name}=${cookie.value}`)
+        : []
     session.cookie = mergeCookies(
         session.cookie,
-        response.cookies.map(cookie => `${cookie.name}=${cookie.value}`),
+        responseCookies,
     )
     let payload
     try {
@@ -164,23 +181,31 @@ const requestPassport = async (session, method, pathname, params = {}, bodyValue
     } catch {
         throw qrError(`汽水登录接口返回无效数据（HTTP ${response.status}）`, 'QISHUI_QR_INVALID_RESPONSE')
     }
-    return payload
+    return { payload, responseCookies }
 }
 
 export const createQishuiQr = async () => {
     cleanupSessions()
     const session = createSession()
-    const payload = await requestPassport(session, 'GET', '/passport/web/get_qrcode/', {
+    const { payload } = await requestPassport(session, 'GET', '/passport/web/get_qrcode/', {
+        passport_jssdk_version: '2.4.13',
+        passport_jssdk_type: 'normal',
+        is_from_ttaccountsdk: '1',
+        aid: AID,
         next: API_BASE,
         need_logo: 'false',
         need_short_url: 'false',
+        is_new_login: '1',
     })
     const data = payload?.data || {}
     const token = text(data.token)
-    const scanUrl = officialScanUrl(data.qrcode_index_url)
+    const indexUrl = text(data.qrcode_index_url)
+    const scanUrl = officialScanUrl(indexUrl)
     if (payload?.message !== 'success' || Number(data.error_code) !== 0 || !token) {
         throw qrError(text(data.description || payload?.message) || '汽水二维码生成失败', 'QISHUI_QR_CREATE_FAILED')
     }
+    // 当前 qrcode_index_url 直接访问会返回 404，汽水 PC 登录流程需要
+    // 通过 light/invoke/scan_login 入口跳转到有效的扫码确认页。
     const qrimg = await QRCode.toDataURL(scanUrl, { errorCorrectionLevel: 'M', margin: 2, width: 360 })
     sessions.set(token, session)
     return {
@@ -190,7 +215,7 @@ export const createQishuiQr = async () => {
         qrimg,
         qrurl: scanUrl,
         expireTime: Number(data.expire_time || 0),
-        message: '请使用汽水音乐 App 扫码确认登录',
+        message: '请使用已登录的汽水音乐 App 扫码确认登录',
     }
 }
 
@@ -199,13 +224,16 @@ export const checkQishuiQr = async (token) => {
     const key = text(token)
     const session = sessions.get(key)
     if (!session) throw qrError('汽水二维码会话已过期，请重新生成', 'QISHUI_QR_SESSION_EXPIRED')
+    if (session.cooldownUntil > Date.now() && session.lastResult) {
+        return session.lastResult
+    }
     if (session.lastResult && Date.now() - session.lastCheckAt < MIN_CHECK_INTERVAL_MS) {
         return session.lastResult
     }
     if (session.checkPromise) return session.checkPromise
 
     session.checkPromise = (async () => {
-      const payload = await requestPassport(session, 'POST', '/passport/web/check_qrconnect/', {}, {
+      const { payload, responseCookies } = await requestPassport(session, 'POST', '/passport/web/check_qrconnect/', {}, {
         need_logo: 'false',
         need_short_url: 'false',
         is_frontier: 'true',
@@ -216,7 +244,25 @@ export const checkQishuiQr = async (token) => {
       const data = payload?.data || {}
       const errorCode = Number(data.error_code || 0)
       const rawStatus = text(data.status).toLowerCase()
-      const diagnostic = { errorCode, rawStatus, description: text(data.description || payload?.message) }
+      const diagnostic = {
+          errorCode,
+          rawStatus,
+          description: text(data.description || payload?.message),
+          cookieNames: cookieNames(session.cookie),
+      }
+      console.info('[Qishui QR] 状态', JSON.stringify(diagnostic))
+      const responseSessionId = extractSessionId(responseCookies)
+      if (responseSessionId) {
+          session.cookie = mergeCookies(session.cookie, `sessionid=${responseSessionId}`)
+      }
+      // Mineradio V6 bridge uses Passport status 3 as the confirmed state.
+      const confirmed = rawStatus === '3'
+          || rawStatus === 'confirmed'
+          || rawStatus === 'success'
+          || data.logged_in === true
+          || data.loggedIn === true
+          || Boolean(data.session_cookie)
+          || Boolean(responseSessionId)
       if (errorCode === 2046) {
           throw qrError('本次登录触发了汽水安全验证，请重新生成二维码后再试', 'QISHUI_QR_SECOND_VERIFY_REQUIRED')
       }
@@ -228,9 +274,19 @@ export const checkQishuiQr = async (token) => {
           void closeQishuiSignerSession(session.sessionKey)
           return expired
       }
+      if (rawStatus === 'expired' || rawStatus === 'expire' || rawStatus === 'timeout') {
+          const expired = { platform: 'qishui', status: 'expired', loggedIn: false, cookie: '', message: '汽水二维码已过期，请重新生成' }
+          session.lastResult = expired
+          session.lastCheckAt = Date.now()
+          sessions.delete(key)
+          void closeQishuiSignerSession(session.sessionKey)
+          return expired
+      }
       // 汽水在扫码后短时间内经常返回 7（访问频繁）。这是临时限流，
       // 不能把扫码会话标记为失败，更不能让上层停止轮询。
-      if (errorCode === 7) {
+      if (errorCode === 7 && !confirmed) {
+          // 汽水在已扫码后会对轮询接口限流；继续高频请求只会延长限流窗口。
+          session.cooldownUntil = Date.now() + 5 * 1000
           if (session.lastResult) return session.lastResult
           return {
               platform: 'qishui',
@@ -241,22 +297,29 @@ export const checkQishuiQr = async (token) => {
               message: '汽水正在确认登录，请稍候…',
           }
       }
-      if (errorCode && errorCode !== 0) {
+      if (errorCode && errorCode !== 0 && !confirmed) {
           const message = text(data.description || payload?.message)
           if (/访问太频繁|操作频繁|请求频繁|too many|频率/i.test(message) && session.lastResult) {
               return session.lastResult
           }
           throw qrError(message || `汽水扫码失败（${errorCode}）`, 'QISHUI_QR_CHECK_FAILED')
       }
-      const confirmed = rawStatus === '3'
-          || rawStatus === 'confirmed'
-          || rawStatus === 'success'
-          || data.logged_in === true
-          || data.loggedIn === true
-          || Boolean(data.session_cookie)
       if (confirmed) {
-          session.cookie = mergeCookies(session.cookie, data.session_cookie || '')
+          const nestedAuth = data.auth && typeof data.auth === 'object' ? data.auth : {}
+          const sessionCookie = [
+              data.session_cookie,
+              data.cookie,
+              payload.session_cookie,
+              payload.cookie,
+              data.sessionid ? `sessionid=${data.sessionid}` : '',
+              data.session_id ? `sessionid=${data.session_id}` : '',
+              nestedAuth.sessionid ? `sessionid=${nestedAuth.sessionid}` : '',
+              nestedAuth.session_id ? `sessionid=${nestedAuth.session_id}` : '',
+          ].filter(Boolean)
+          session.cookie = mergeCookies(session.cookie, sessionCookie)
           const cookie = session.cookie
+          // 汽水 Passport 确认后常用 sessionid_ss 下发完整登录态，
+          // 不能只按 sessionid 的精确名称判断，否则会把成功登录误报成 502。
           if (!/(?:^|;\s*)(?:sessionid|sessionid_ss|sid_guard|sid_tt)=/i.test(cookie)) {
               throw qrError('汽水扫码成功但未返回完整登录态，请重新扫码', 'QISHUI_QR_COOKIE_MISSING')
           }
@@ -267,7 +330,7 @@ export const checkQishuiQr = async (token) => {
           void closeQishuiSignerSession(session.sessionKey)
           return result
       }
-      const status = rawStatus === '2'
+      const status = rawStatus === '1'
           || rawStatus === 'scanned'
           || rawStatus === 'scan'
           || rawStatus === '已扫码'
