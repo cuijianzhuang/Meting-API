@@ -8,6 +8,7 @@ const PC_API = 'https://api.qishui.com'
 // 扫码拿到的是 Passport 网页会话，PC 接口必须使用与 qishui-api 一致的
 // 稳定客户端指纹；每次请求重新生成设备参数会触发“应用版本有风险”。
 const WEB_UA = 'LunaPC/3.3.0(359450208)'
+const PLAYLIST_WEB_UA = 'LunaPC/3.6.0(424921879)'
 const STREAM_WEB_UA = 'LunaPC/3.0.0(290101097)'
 const PC_DEVICE_ID = String(Date.now())
 const PC_FP = PC_DEVICE_ID
@@ -299,6 +300,31 @@ const get_search_playlists = async (keyword, cookie) => {
         const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/search/mixed`, params), { cookie })
         return collectPlaylists(json)
     } catch (error) { console.warn('[Qishui] 混合搜索歌单失败:', error.message); return [] }
+}
+
+const get_playlist = async (id, cookie) => {
+    if (!text(id) || !qishuiCookieHasLogin(cookie)) return []
+    const params = pcParams({
+        version_name: '3.6.0',
+        version_code: '30060000',
+        playlist_id: text(id),
+        cursor: '',
+        count: '100',
+    })
+    try {
+        const json = await requestJson(
+            urlWithParams(`${PC_API}/luna/pc/playlist/detail`, params),
+            {
+                cookie,
+                timeout: 15000,
+                headers: { 'User-Agent': PLAYLIST_WEB_UA },
+            },
+        )
+        return collectMedia(json).map(mapMedia).filter(Boolean)
+    } catch (error) {
+        console.warn('[Qishui] 歌单详情获取失败:', error.message)
+        return []
+    }
 }
 
 const getPublicDetail = async (id) => {
@@ -710,7 +736,7 @@ export const parseQishuiMembership = (payload) => {
     return { known, isVip, isSvip }
 }
 
-const support_type = ['url', 'lrc', 'song', 'pic', 'search', 'search_playlist', 'fm']
+const support_type = ['url', 'lrc', 'song', 'pic', 'search', 'playlist', 'search_playlist', 'fm']
 
 const handle = async (type, id, cookie = '', options = {}) => {
     if (type === 'search') return get_search_songs(id, cookie)
@@ -718,6 +744,7 @@ const handle = async (type, id, cookie = '', options = {}) => {
     if (type === 'pic') return (await get_song_info(id, cookie))[0]?.pic || ''
     if (type === 'lrc') return get_lyric(id, cookie)
     if (type === 'url') return get_song_url(id, cookie, options)
+    if (type === 'playlist') return get_playlist(id, cookie)
     if (type === 'search_playlist') return get_search_playlists(id, cookie)
     if (type === 'fm') return get_personal_fm(id, cookie)
     return -1
