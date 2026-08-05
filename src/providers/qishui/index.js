@@ -438,8 +438,7 @@ const qualityRank = (stream) => {
     const bitrate = stream.bitrate > 10000 ? stream.bitrate / 1000 : stream.bitrate
     if (/studio|recording|录音室|spatial/.test(label)) return 130
     if (/atmos|dolby|全景|hi[_-]?res/.test(label)) return 120
-    if (/hi[_-]?res|master/.test(label)) return 110
-    if (/lossless|flac|sq/.test(label) || bitrate >= 900) return 100
+    if (/lossless|flac|sq|highest/.test(label) || bitrate >= 900) return 100
     if (/highest|excellent|superhigh|hq/.test(label)) return 80
     if (/higher|high|320/.test(label) || bitrate >= 320) return 70
     return 50
@@ -449,7 +448,7 @@ const requestedRank = (quality) => {
     if (/studio|recording/.test(quality)) return 130
     if (/atmos|dolby|spatial/.test(quality)) return 120
     if (/hi[_-]?res|master/.test(quality)) return 120
-    if (/flac|lossless/.test(quality)) return 110
+    if (/flac|lossless/.test(quality)) return 100
     if (/320|exhigh|higher/.test(quality)) return 70
     return 50
 }
