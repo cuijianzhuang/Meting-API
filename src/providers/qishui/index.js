@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
+import { loadQishuiAudio } from './audio.js'
 
 const PUBLIC_SEARCH = 'https://api-vehicle.volcengine.com/v2/search/type'
 const PUBLIC_DETAIL = 'https://api-vehicle.volcengine.com/v2/custom/contents'
@@ -502,7 +503,17 @@ const get_song_url = async (id, cookie, options = {}) => {
     // 汽水播放只接受带登录 Cookie 的 PC 完整流；无 Cookie 直接无链。
     if (!text(cookie)) return null
     try {
-        return await get_pc_song_url(id, cookie, options)
+        const stream = await get_pc_song_url(id, cookie, options)
+        if (stream?.url && stream?.auth) {
+            // 预先下载并解密，播放器请求 /audio/qishui 时直接命中缓存，
+            // 避免把首次下载和解密耗时放到播放器的启动阶段。
+            try {
+                await loadQishuiAudio(stream.url, stream.auth)
+            } catch (error) {
+                console.warn('[QishuiAudio] 播放地址预热失败:', error?.message || error)
+            }
+        }
+        return stream
     } catch {
         // PC 完整流失败交给客户端跨源回退，不降级到其它试听流。
         return null
@@ -567,6 +578,7 @@ const get_personal_fm = async (mode, cookie) => {
             },
         )
         const songs = collectMedia(json).map(mapMedia).filter(Boolean)
+        console.log('[Qishui song-tab] 歌曲名称:', songs.map(song => song.name || song.title || '').filter(Boolean).join(' | '))
         // 接口没有回传“已播放”确认事件，只记录本会话已下发过的歌曲，避免连续请求重复推荐。
         const nextPlayed = [
             ...session.playedMedia,
