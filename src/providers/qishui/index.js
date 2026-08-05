@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { loadQishuiAudio } from './audio.js'
+import { preloadQishuiAudio } from './audio.js'
 
 const PUBLIC_SEARCH = 'https://api-vehicle.volcengine.com/v2/search/type'
 const PUBLIC_DETAIL = 'https://api-vehicle.volcengine.com/v2/custom/contents'
@@ -531,13 +531,7 @@ const get_song_url = async (id, cookie, options = {}) => {
     try {
         const stream = await get_pc_song_url(id, cookie, options)
         if (stream?.url && stream?.auth) {
-            // 预先下载并解密，播放器请求 /audio/qishui 时直接命中缓存，
-            // 避免把首次下载和解密耗时放到播放器的启动阶段。
-            try {
-                await loadQishuiAudio(stream.url, stream.auth)
-            } catch (error) {
-                console.warn('[QishuiAudio] 播放地址预热失败:', error?.message || error)
-            }
+            preloadQishuiAudio(stream.url, stream.auth)
         }
         return stream
     } catch {

@@ -1,8 +1,8 @@
 import Providers from "../providers/index.js"
 import { format as lyricFormat, get_url } from "../util.js"
+import { wrapQishuiPlayPayload } from "../providers/qishui/audio.js"
 import store from "../admin/store.js"
 import { isValidQuality, getQualityName, buildUrlPayload } from "../quality.js"
-
 export default async (ctx) => {
 
     const p = new Providers()
@@ -44,12 +44,8 @@ export default async (ctx) => {
             return ctx.json({ error: 'no url' })
         }
         if (server === 'qishui' && payload?.auth) {
-            const endpoint = new URL(get_url(ctx))
-            endpoint.pathname = '/audio/qishui'
-            endpoint.search = ''
-            endpoint.searchParams.set('url', url)
-            endpoint.searchParams.set('auth', payload.auth)
-            url = endpoint.toString()
+            const wrapped = wrapQishuiPlayPayload(ctx, payload)
+            url = wrapped.url || url
             payload.url = url
         }
         if (url.startsWith('@')) {

@@ -1,5 +1,5 @@
 import store from '../admin/store.js'
-import { authMiddleware, adminMiddleware } from '../middleware/auth.js'
+import { authMiddleware, adminMiddleware, apiTokenMiddleware } from '../middleware/auth.js'
 import { validateCookie } from './cookie-validator.js'
 import cookieMonitor from './cookie-monitor.js'
 import { createQishuiQr, checkQishuiQr, completeQishuiSecondVerify, getQishuiSecondVerifyAsset, requestQishuiSecondVerify } from '../providers/qishui/qr.js'
@@ -7,6 +7,7 @@ import { createNeteaseQrSession, checkNeteaseQrSession } from '../providers/nete
 import { createTencentQrSession, checkTencentQrSession } from '../providers/tencent/qr_login.js'
 import Providers from '../providers/index.js'
 import { get_url } from '../util.js'
+import { wrapQishuiPlayPayload } from '../providers/qishui/audio.js'
 
 const formatCookieForDisplay = (cookie) => {
     const { id, platform, createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError } = cookie
@@ -261,7 +262,7 @@ export const adminRoutes = (app) => {
         }
     })
 
-    app.get('/admin/openmusic', authMiddleware, async (c) => {
+    app.get('/admin/openmusic', apiTokenMiddleware, async (c) => {
         const server = String(c.req.query('server') || '').trim().toLowerCase()
         const type = String(c.req.query('type') || '').trim().toLowerCase()
         const id = String(c.req.query('id') || '').trim()
@@ -275,13 +276,7 @@ export const adminRoutes = (app) => {
         try {
             const data = await provider.handle(type, id, cookie, { quality: c.req.query('quality') })
             if (server === 'qishui' && type === 'url' && data?.url && data?.auth) {
-                const endpoint = new URL(get_url(c))
-                endpoint.pathname = '/audio/qishui'
-                endpoint.search = ''
-                endpoint.searchParams.set('url', data.url)
-                endpoint.searchParams.set('auth', data.auth)
-                if (data.mimeType) endpoint.searchParams.set('mime_type', data.mimeType)
-                data.url = endpoint.toString()
+                data = wrapQishuiPlayPayload(c, data)
             }
             if (type === 'url' && data && typeof data === 'object') {
                 return c.json({ ...data, loudness: data.loudness || null })
@@ -292,7 +287,7 @@ export const adminRoutes = (app) => {
         }
     })
 
-    app.post('/admin/fm', authMiddleware, async (c) => {
+    app.post('/admin/fm', apiTokenMiddleware, async (c) => {
         const body = await c.req.json()
         const platform = String(body.platform || 'netease').trim().toLowerCase()
         const cookie = String(body.cookie || '').trim()

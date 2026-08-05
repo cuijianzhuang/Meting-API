@@ -1,18 +1,42 @@
 import store from '../admin/store.js'
 
+const extractBearerToken = (authHeader) => {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return ''
+    return authHeader.substring(7).trim()
+}
+
+const applyApiTokenContext = (c, tokenData) => {
+    c.set('username', tokenData.createdBy || 'api')
+    c.set('isApiToken', true)
+    c.set('tokenData', tokenData)
+}
+
+/** 程序化接口专用：仅接受 Authorization: Bearer <API Token> */
+export const apiTokenMiddleware = async (c, next) => {
+    const apiToken = extractBearerToken(c.req.header('Authorization'))
+    if (!apiToken) {
+        return c.json({ success: false, error: '需要 API Token，请使用 Authorization: Bearer <token>' }, 401)
+    }
+
+    const result = store.validateApiToken(apiToken)
+    if (!result.valid) {
+        return c.json({ success: false, error: 'API Token 无效' }, 401)
+    }
+
+    applyApiTokenContext(c, result.tokenData)
+    return await next()
+}
+
 export const authMiddleware = async (c, next) => {
     const username = c.req.header('X-Auth-Username')
     const token = c.req.header('X-Auth-Token')
-    const authHeader = c.req.header('Authorization')
+    const apiToken = extractBearerToken(c.req.header('Authorization'))
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        const apiToken = authHeader.substring(7)
+    if (apiToken) {
         const result = store.validateApiToken(apiToken)
         
         if (result.valid) {
-            c.set('username', result.tokenData.createdBy || 'api')
-            c.set('isApiToken', true)
-            c.set('tokenData', result.tokenData)
+            applyApiTokenContext(c, result.tokenData)
             return await next()
         }
     }
@@ -49,16 +73,13 @@ export const adminMiddleware = async (c, next) => {
 export const optionalAuth = async (c, next) => {
     const username = c.req.header('X-Auth-Username')
     const token = c.req.header('X-Auth-Token')
-    const authHeader = c.req.header('Authorization')
+    const apiToken = extractBearerToken(c.req.header('Authorization'))
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        const apiToken = authHeader.substring(7)
+    if (apiToken) {
         const result = store.validateApiToken(apiToken)
         
         if (result.valid) {
-            c.set('username', result.tokenData.createdBy || 'api')
-            c.set('isApiToken', true)
-            c.set('tokenData', result.tokenData)
+            applyApiTokenContext(c, result.tokenData)
             return await next()
         }
     }

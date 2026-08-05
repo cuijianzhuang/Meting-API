@@ -10,6 +10,7 @@ import { cors } from 'hono/cors'
 import config from './src/config.js'
 import { get_runtime, get_url } from './src/util.js'
 import { isQishuiRequestAbort, qishuiAudioResponse } from './src/providers/qishui/audio.js'
+import { apiTokenMiddleware } from './src/middleware/auth.js'
 
 const app = new Hono()
 
@@ -34,7 +35,7 @@ app.use('*', async (c, next) => {
     await next()
 })
 
-app.get('/api', api)
+app.get('/api', apiTokenMiddleware, api)
 app.get('/audio/qishui', async (c) => {
     try {
         return await qishuiAudioResponse(c)
@@ -47,7 +48,7 @@ app.get('/audio/qishui', async (c) => {
         return c.json({ error: error?.message || 'qishui audio failed' }, 502)
     }
 })
-app.get('/test', handler)
+app.get('/test', apiTokenMiddleware, handler)
 app.get('/', (c) => {
     const baseUrl = get_url(c)
     return c.html(`<!DOCTYPE html>

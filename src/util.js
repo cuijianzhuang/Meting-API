@@ -92,12 +92,42 @@ export const get_runtime = () => {
 
 export const get_url = (ctx) => {
   const runtime = get_runtime()
-  const perfix = ctx.req.header('X-Forwarded-Host') || ctx.req.header('X-Forwarded-Url')
-  let req_url = perfix ? perfix + getPathFromURL(ctx.req.url.split('?')[0]) : ctx.req.url.split('?')[0]
+  const rawPath = getPathFromURL(ctx.req.url.split('?')[0])
+
+  // 子路径反代（如 /meting）可选手动指定完整对外基址
+  const forwardedBase = String(
+    ctx.req.header('X-Forwarded-Host') || ctx.req.header('X-Forwarded-Url') || '',
+  ).trim().replace(/\/+$/, '')
+
+  const forwardedProto = String(ctx.req.header('X-Forwarded-Proto') || '').split(',')[0].trim().toLowerCase()
+  const host = String(ctx.req.header('Host') || '').trim()
+
+  let req_url = ''
+  if (forwardedBase) {
+    req_url = forwardedBase + rawPath
+  } else if (host) {
+    const scheme = forwardedProto === 'https' ? 'https' : 'http'
+    const prefix = String(ctx.req.header('X-Forwarded-Prefix') || '').trim().replace(/\/+$/, '')
+    const origin = `${scheme}://${host}${prefix}`
+    req_url = `${origin}${rawPath}`
+  } else {
+    req_url = ctx.req.url.split('?')[0]
+  }
+
   if (!req_url.startsWith('http')) {
-    const forwardedProto = String(ctx.req.header('X-Forwarded-Proto') || '').split(',')[0].trim().toLowerCase()
     req_url = `${forwardedProto === 'https' ? 'https' : 'http'}://${req_url}`
   }
   if (runtime === 'vercel') req_url = req_url.replace('http://', 'https://')
   return req_url
+}
+
+/** 对外基址（scheme + host + 子路径前缀），用于拼 /audio/qishui 等绝对链接 */
+export const get_public_base = (ctx) => {
+  const full = get_url(ctx)
+  const endpoint = new URL(full)
+  const dir = endpoint.pathname.replace(/\/[^/]*$/, '')
+  endpoint.pathname = dir || '/'
+  endpoint.search = ''
+  endpoint.hash = ''
+  return endpoint.toString().replace(/\/$/, '')
 }

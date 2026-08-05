@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import { Buffer } from 'buffer/index.js'
+import { get_public_base } from '../../util.js'
 
 const WEB_UA = 'LunaPC/3.3.0(359450208)'
 
@@ -67,8 +68,6 @@ const flacMetadata = (stsd) => {
     if (index < 4) return Buffer.alloc(0)
     const size = stsd.data.readUInt32BE(index - 4)
     const end = Math.min(index - 4 + size, stsd.data.length)
-    // ISO BMFF dfLa 的 payload 前 4 字节是 version + flags，
-    // FLAC 流只能从 metadata block header 开始，否则浏览器解码器会拒绝打开。
     return stsd.data.subarray(index + 8, end)
 }
 
@@ -116,10 +115,76 @@ export const decryptQishuiAudio = (source, spadeA) => {
 }
 
 const cache = new Map()
-const MAX_CACHE_BYTES = 256 * 1024 * 1024
+const inflightLoads = new Map()
+const MAX_CACHE_BYTES = 512 * 1024 * 1024
 let cacheBytes = 0
 
-const remember = (key, value) => {
+const diskCacheDir = (() => {
+    const runtime = globalThis?.process?.release?.name === 'node' || globalThis?.Bun !== undefined
+    if (!runtime) return ''
+    const base = String(globalThis?.process?.env?.DATA_DIR || './data').trim() || './data'
+    return `${base.replace(/\\/g, '/').replace(/\/+$/, '')}/qishui-audio-cache`
+})()
+
+let diskFs = null
+let diskPath = null
+
+const getDiskModules = async () => {
+    if (!diskCacheDir) return null
+    if (diskFs && diskPath) return { fs: diskFs, path: diskPath }
+    diskFs = await import('node:fs/promises')
+    diskPath = await import('node:path')
+    await diskFs.mkdir(diskCacheDir, { recursive: true })
+    return { fs: diskFs, path: diskPath }
+}
+
+const diskPaths = (key) => ({
+    body: `${diskCacheDir}/${key}.bin`,
+    meta: `${diskCacheDir}/${key}.json`,
+})
+
+const readDiskCache = async (key) => {
+    const mods = await getDiskModules()
+    if (!mods) return null
+    const { fs } = mods
+    const paths = diskPaths(key)
+    try {
+        const metaRaw = await fs.readFile(paths.meta, 'utf8')
+        const meta = JSON.parse(metaRaw)
+        const buffer = await fs.readFile(paths.body)
+        if (!buffer?.length || !meta?.contentType) return null
+        return { buffer, contentType: meta.contentType, at: meta.at || Date.now() }
+    } catch {
+        return null
+    }
+}
+
+const writeDiskCache = async (key, value) => {
+    const mods = await getDiskModules()
+    if (!mods) return
+    const { fs } = mods
+    const paths = diskPaths(key)
+    const tmpBody = `${paths.body}.${process.pid}.tmp`
+    const tmpMeta = `${paths.meta}.${process.pid}.tmp`
+    try {
+        await fs.writeFile(tmpBody, value.buffer)
+        await fs.writeFile(tmpMeta, JSON.stringify({
+            contentType: value.contentType,
+            at: Date.now(),
+            bytes: value.buffer.length,
+        }))
+        await fs.rename(tmpBody, paths.body)
+        await fs.rename(tmpMeta, paths.meta)
+    } catch (error) {
+        await fs.unlink(tmpBody).catch(() => {})
+        await fs.unlink(tmpMeta).catch(() => {})
+        console.warn('[QishuiAudio] 磁盘缓存写入失败:', error?.message || error)
+    }
+}
+
+const remember = (key, value, { persistDisk = true } = {}) => {
+    const existing = cache.get(key)
+    if (existing) cacheBytes -= existing.buffer.length
     cache.set(key, { ...value, at: Date.now() })
     cacheBytes += value.buffer.length
     while (cacheBytes > MAX_CACHE_BYTES && cache.size > 1) {
@@ -127,6 +192,48 @@ const remember = (key, value) => {
         cache.delete(oldest[0])
         cacheBytes -= oldest[1].buffer.length
     }
+    if (persistDisk) void writeDiskCache(key, value)
+}
+
+const cacheKey = (url, auth) => crypto.createHash('sha1').update(`${url}\n${auth}`).digest('hex')
+const etagForKey = (key) => `"${key}"`
+
+const PLAY_TOKEN_TTL = 30 * 60 * 1000
+const playTokens = new Map()
+
+const prunePlayTokens = () => {
+    const now = Date.now()
+    for (const [token, entry] of playTokens) {
+        if (now > entry.expiresAt) playTokens.delete(token)
+    }
+    if (playTokens.size <= 1000) return
+    const oldest = [...playTokens.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt)
+    for (let index = 0; index < oldest.length - 1000; index += 1) {
+        playTokens.delete(oldest[index][0])
+    }
+}
+
+export const createQishuiPlayToken = (url, auth, mimeType) => {
+    const token = crypto.randomBytes(16).toString('hex')
+    playTokens.set(token, {
+        url,
+        auth,
+        mimeType: mimeType || '',
+        expiresAt: Date.now() + PLAY_TOKEN_TTL,
+    })
+    prunePlayTokens()
+    preloadQishuiAudio(url, auth)
+    return token
+}
+
+export const resolveQishuiPlayToken = (token) => {
+    const entry = playTokens.get(String(token || ''))
+    if (!entry) return null
+    if (Date.now() > entry.expiresAt) {
+        playTokens.delete(String(token))
+        return null
+    }
+    return entry
 }
 
 export const isQishuiRequestAbort = (error, signal) => {
@@ -145,7 +252,6 @@ const fetchQishuiSource = async (url, signal) => {
     } catch (error) {
         if (signal?.aborted || error?.name === 'AbortError') throw error
         if (!/terminated|socket|reset|network/i.test(String(error?.message || ''))) throw error
-        // 汽水 CDN 偶发提前结束连接；保留同一 URL 重试一次，避免播放器收到 502。
         return fetch(url, {
             signal,
             headers: { 'User-Agent': WEB_UA, Referer: 'https://www.qishui.com/' },
@@ -153,29 +259,112 @@ const fetchQishuiSource = async (url, signal) => {
     }
 }
 
-export const loadQishuiAudio = async (url, auth, signal) => {
-    const key = crypto.createHash('sha1').update(`${url}\n${auth}`).digest('hex')
+export const preloadQishuiAudio = (url, auth) => {
+    void loadQishuiAudio(url, auth).catch(error => {
+        if (!isQishuiRequestAbort(error)) {
+            console.warn('[QishuiAudio] 预热失败:', error?.message || error)
+        }
+    })
+}
+
+export const loadQishuiAudio = async (url, auth) => {
+    const key = cacheKey(url, auth)
     const cached = cache.get(key)
-    if (cached) { cached.at = Date.now(); return cached }
-    if (signal?.aborted) throw Object.assign(new Error('汽水音频请求已取消'), { name: 'AbortError' })
-    const response = await fetchQishuiSource(url, signal)
-    if (!response.ok) throw new Error(`汽水音频下载失败: ${response.status}`)
-    const raw = Buffer.from(await response.arrayBuffer())
-    if (signal?.aborted) throw Object.assign(new Error('汽水音频请求已取消'), { name: 'AbortError' })
-    const result = auth ? decryptQishuiAudio(raw, auth) : {
-        buffer: raw,
-        contentType: response.headers.get('content-type') || 'audio/mp4',
+    if (cached) {
+        cached.at = Date.now()
+        return { ...cached, cacheHit: true, cacheSource: 'memory' }
     }
-    remember(key, result)
-    return result
+
+    const diskCached = await readDiskCache(key)
+    if (diskCached) {
+        remember(key, diskCached, { persistDisk: false })
+        return { ...diskCached, cacheHit: true, cacheSource: 'disk' }
+    }
+
+    if (inflightLoads.has(key)) {
+        const shared = await inflightLoads.get(key)
+        return { ...shared, cacheHit: shared.cacheHit ?? false, cacheSource: shared.cacheSource || 'shared' }
+    }
+
+    // 与客户端 Range/切歌断开解耦：后台拉完并缓存，避免低带宽服务器重复从 CDN 下载。
+    const task = (async () => {
+        const response = await fetchQishuiSource(url)
+        if (!response.ok) throw new Error(`汽水音频下载失败: ${response.status}`)
+        const raw = Buffer.from(await response.arrayBuffer())
+        const result = auth ? decryptQishuiAudio(raw, auth) : {
+            buffer: raw,
+            contentType: response.headers.get('content-type') || 'audio/mp4',
+        }
+        remember(key, result)
+        return { ...result, cacheHit: false, cacheSource: 'cdn' }
+    })()
+
+    inflightLoads.set(key, task)
+    try {
+        return await task
+    } finally {
+        inflightLoads.delete(key)
+    }
+}
+
+/** 浏览器可直链播放的汽水解密地址（公开；每次下发 30 分钟有效的 t） */
+export const buildQishuiAudioUrl = (ctx, { url, auth, mimeType }) => {
+    const token = createQishuiPlayToken(url, auth, mimeType)
+    const endpoint = new URL(`${get_public_base(ctx)}/audio/qishui`)
+    endpoint.searchParams.set('t', token)
+    if (mimeType) endpoint.searchParams.set('mime_type', mimeType)
+    return endpoint.toString()
+}
+
+export const wrapQishuiPlayPayload = (ctx, payload) => {
+    if (!payload?.url || !payload?.auth) return payload
+    const wrapped = { ...payload, url: buildQishuiAudioUrl(ctx, payload) }
+    delete wrapped.auth
+    return wrapped
+}
+
+const CHUNK_SIZE = 512 * 1024
+
+const bodyForRange = (buffer, start, end) => {
+    const slice = buffer.subarray(start, end + 1)
+    if (slice.length <= CHUNK_SIZE) return slice
+    return new ReadableStream({
+        start(controller) {
+            let offset = 0
+            while (offset < slice.length) {
+                const next = slice.subarray(offset, offset + CHUNK_SIZE)
+                offset += next.length
+                controller.enqueue(next)
+            }
+            controller.close()
+        },
+    })
 }
 
 export const qishuiAudioResponse = async (ctx) => {
-    const url = ctx.req.query('url') || ''
-    const auth = ctx.req.query('auth') || ''
+    const token = String(ctx.req.query('t') || '').trim()
+    if (!token) return ctx.json({ error: 'missing qishui play token' }, 400)
+
+    const entry = resolveQishuiPlayToken(token)
+    if (!entry) return ctx.json({ error: 'qishui play token expired' }, 403)
+
+    const url = entry.url
+    const auth = entry.auth
     if (!/^https?:\/\//i.test(url)) return ctx.json({ error: 'invalid qishui audio url' }, 400)
+
     const signal = ctx.req.raw?.signal
-    const audio = await loadQishuiAudio(url, auth, signal)
+    const contentKey = cacheKey(url, auth)
+    const etag = etagForKey(contentKey)
+    if (ctx.req.header('if-none-match') === etag) {
+        return new Response(null, {
+            status: 304,
+            headers: {
+                ETag: etag,
+                'Cache-Control': `private, max-age=${Math.floor(PLAY_TOKEN_TTL / 1000)}`,
+            },
+        })
+    }
+    const audio = await loadQishuiAudio(url, auth)
     if (signal?.aborted) throw Object.assign(new Error('汽水音频请求已取消'), { name: 'AbortError' })
     const total = audio.buffer.length
     const match = /^bytes=(\d*)-(\d*)$/i.exec(ctx.req.header('range') || '')
@@ -194,8 +383,17 @@ export const qishuiAudioResponse = async (ctx) => {
     const headers = {
         'Content-Type': audio.contentType,
         'Accept-Ranges': 'bytes',
-        'Cache-Control': 'private, max-age=180',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': `private, max-age=${Math.floor(PLAY_TOKEN_TTL / 1000)}`,
+        ETag: etag,
+        'X-Accel-Buffering': 'no',
+        'X-Qishui-Cache': audio.cacheHit ? (audio.cacheSource || 'hit') : 'miss',
     }
-    if (status === 206) headers['Content-Range'] = `bytes ${start}-${end}/${total}`
-    return new Response(audio.buffer.subarray(start, end + 1), { status, headers })
+    if (status === 206) {
+        headers['Content-Range'] = `bytes ${start}-${end}/${total}`
+        headers['Content-Length'] = String(end - start + 1)
+    } else {
+        headers['Content-Length'] = String(total)
+    }
+    return new Response(bodyForRange(audio.buffer, start, end), { status, headers })
 }
