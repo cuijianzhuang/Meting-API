@@ -7,6 +7,7 @@ const PC_API = 'https://api.qishui.com'
 // 扫码拿到的是 Passport 网页会话，PC 接口必须使用与 qishui-api 一致的
 // 稳定客户端指纹；每次请求重新生成设备参数会触发“应用版本有风险”。
 const WEB_UA = 'LunaPC/3.3.0(359450208)'
+const STREAM_WEB_UA = 'LunaPC/3.0.0(290101097)'
 const PC_DEVICE_ID = String(Date.now())
 const PC_FP = PC_DEVICE_ID
 
@@ -57,6 +58,12 @@ const pcParams = (extra = {}) => {
         ...extra,
     }
 }
+
+const streamPcParams = (extra = {}) => pcParams({
+    version_name: '3.0.0',
+    version_code: '30000000',
+    ...extra,
+})
 
 const urlWithParams = (base, params) => {
     const url = new URL(base)
@@ -304,11 +311,11 @@ const get_song_info = async (id, cookie) => {
     // 登录态下统一读取 PC track_v2，避免详情接口混入试听数据。
     if (text(cookie)) {
         try {
-            const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, pcParams({
+            const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, streamPcParams({
                 track_id: id,
                 media_type: 'track',
                 queue_type: '',
-            })), { cookie, timeout: 12000 })
+            })), { cookie, timeout: 12000, headers: { 'User-Agent': STREAM_WEB_UA } })
             const item = collectMedia(json).map(mapMedia).find(Boolean)
             if (item) return [item]
         } catch {}
@@ -358,7 +365,7 @@ const findLyrics = (payload) => {
 const get_lyric = async (id, cookie) => {
     if (text(cookie)) {
         try {
-            const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, pcParams({ track_id: id, media_type: 'track' })), { cookie })
+            const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, streamPcParams({ track_id: id, media_type: 'track' })), { cookie, headers: { 'User-Agent': STREAM_WEB_UA } })
             const found = findLyrics(json)
             if (found.lyric) return found
         } catch {}
@@ -378,15 +385,17 @@ const streamFrom = (value, inherited = {}) => {
     if (!url) return null
     const meta = object(value.video_meta, value.VideoMeta, value.meta)
     const bitrate = Number(value.bitrate || value.Bitrate || value.real_bitrate || value.br || meta.bitrate || 0)
-    const quality = text(value.quality || value.Quality || value.definition || value.gear_des_key || inherited.quality)
-    const format = text(value.format || value.Format || value.vtype || meta.format)
+    const quality = text(value.quality || value.Quality || value.definition || meta.quality || value.gear_des_key || inherited.quality)
+    const format = text(value.format || value.Format || value.vtype || meta.format || meta.vtype)
+    const codecType = text(value.codec_type || value.codecType || meta.codec_type || meta.codecType)
     const authInfo = object(value.encrypt_info, value.EncryptInfo, value.encryptInfo)
     const auth = text(value.play_auth || value.PlayAuth || value.spade_a || authInfo.spade_a || inherited.auth)
-    let isVideo = /video/i.test(format)
+    const audioCodec = /(?:aac|flac|mp3|m4a|opus|audio)/i.test(`${format} ${codecType}`)
+    let isVideo = /video/i.test(format) && !audioCodec
     let mimeType = ''
     try {
         mimeType = text(new URL(url).searchParams.get('mime_type'))
-        isVideo ||= /(?:^|_)video_/i.test(mimeType)
+        isVideo ||= /(?:^|_)video_/i.test(mimeType) && !audioCodec
     } catch {}
     const isMp4 = /(?:^|[._/-])mp4(?:$|[._/?-])/i.test(`${format} ${mimeType} ${url}`)
     return { url, auth, bitrate, quality, format, mimeType, isVideo, isMp4, duration: seconds(value.duration || inherited.duration) }
@@ -427,9 +436,9 @@ const collectStreams = (payload) => {
 const qualityRank = (stream) => {
     const label = `${stream.quality} ${stream.format}`.toLowerCase()
     const bitrate = stream.bitrate > 10000 ? stream.bitrate / 1000 : stream.bitrate
-    if (/studio|recording|录音室/.test(label)) return 130
-    if (/atmos|dolby|spatial|全景/.test(label)) return 120
-    if (/hires|master/.test(label)) return 110
+    if (/studio|recording|录音室|spatial/.test(label)) return 130
+    if (/atmos|dolby|全景|hi[_-]?res/.test(label)) return 120
+    if (/hi[_-]?res|master/.test(label)) return 110
     if (/lossless|flac|sq/.test(label) || bitrate >= 900) return 100
     if (/highest|excellent|superhigh|hq/.test(label)) return 80
     if (/higher|high|320/.test(label) || bitrate >= 320) return 70
@@ -439,8 +448,8 @@ const qualityRank = (stream) => {
 const requestedRank = (quality) => {
     if (/studio|recording/.test(quality)) return 130
     if (/atmos|dolby|spatial/.test(quality)) return 120
-    if (/hires|master/.test(quality)) return 110
-    if (/flac|lossless/.test(quality)) return 100
+    if (/hi[_-]?res|master/.test(quality)) return 120
+    if (/flac|lossless/.test(quality)) return 110
     if (/320|exhigh|higher/.test(quality)) return 70
     return 50
 }
@@ -475,8 +484,9 @@ const selectSongStream = (streams, options = {}) => {
 const get_pc_song_url = async (id, cookie, options = {}) => {
     const queueType = text(options.queueType) || 'daily_mix'
     const sceneName = text(options.sceneName) || 'track_reco'
-    const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, pcParams()), {
+    const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, streamPcParams()), {
         cookie,
+        headers: { 'User-Agent': STREAM_WEB_UA },
         method: 'POST',
         body: {
             media_type: 'track',
