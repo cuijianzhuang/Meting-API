@@ -6,7 +6,7 @@ const PC_API = 'https://api.qishui.com'
 
 // 扫码拿到的是 Passport 网页会话，PC 接口必须使用与 qishui-api 一致的
 // 稳定客户端指纹；每次请求重新生成设备参数会触发“应用版本有风险”。
-const WEB_UA = 'LunaPC/3.0.0(290101097)'
+const WEB_UA = 'LunaPC/3.3.0(359450208)'
 const PC_DEVICE_ID = String(Date.now())
 const PC_FP = PC_DEVICE_ID
 
@@ -50,7 +50,7 @@ const pcParams = (extra = {}) => {
     return {
         aid: '386088', app_name: 'luna_pc', region: 'cn', geo_region: 'cn', os_region: 'cn',
         sim_region: '', device_id: PC_DEVICE_ID, cdid: '',
-        version_name: '3.0.0', version_code: '30000000', channel: 'official', build_mode: 'master',
+        version_name: '3.3.0', version_code: '359450208', channel: 'official', build_mode: 'master',
         network_carrier: '', ac: 'wifi', tz_name: 'Asia/Shanghai', resolution: '',
         device_platform: 'windows', device_type: 'Windows', os_version: 'Windows 11', fp: PC_FP,
         iid: '',

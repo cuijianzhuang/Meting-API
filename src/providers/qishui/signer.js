@@ -14,6 +14,25 @@ let browserPromise
 let assetServerPromise
 const pages = new Map()
 
+const closeBrowserWhenIdle = async () => {
+    if (pages.size > 0) return
+    const pendingBrowser = browserPromise
+    browserPromise = null
+    if (pendingBrowser) {
+        try {
+            const browser = await pendingBrowser
+            await browser.close()
+        } catch {}
+    }
+    if (pages.size === 0 && assetServerPromise) {
+        try {
+            const { server } = await assetServerPromise
+            await new Promise(resolve => server.close(() => resolve()))
+        } catch {}
+        assetServerPromise = null
+    }
+}
+
 const executableCandidates = () => [
     process.env.QISHUI_CHROMIUM_PATH,
     process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -196,4 +215,5 @@ export const closeQishuiSignerSession = async (sessionKey) => {
         const { context } = await pending
         await context.close()
     } catch {}
+    await closeBrowserWhenIdle()
 }
