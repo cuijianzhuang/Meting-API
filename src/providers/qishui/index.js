@@ -101,7 +101,16 @@ const requestJson = async (url, { cookie = '', method = 'GET', body, timeout = 1
             headers,
         })
         if (!response.ok) throw new Error(`汽水接口返回 ${response.status}`)
-        const json = await response.json()
+        const responseText = await response.text()
+        if (!responseText.trim()) {
+            throw new Error(`汽水接口返回空响应: ${new URL(url).pathname}`)
+        }
+        let json
+        try {
+            json = JSON.parse(responseText)
+        } catch {
+            throw new Error(`汽水接口返回无效 JSON: ${new URL(url).pathname}`)
+        }
         const status = object(json?.status_info, json?.statusInfo)
         const code = Number(status.status_code ?? status.statusCode ?? json?.status_code ?? 0)
         if (code) throw new Error(text(status.status_msg || status.statusMsg || json?.message || `汽水状态码 ${code}`))
@@ -254,7 +263,12 @@ const pcSearch = async (keyword, cookie, limit = 30) => {
 
 const get_search_songs = async (keyword, cookie) => {
     if (qishuiCookieHasLogin(cookie)) {
-        try { return await pcSearch(keyword, cookie) } catch (error) { console.warn('[Qishui] 登录搜索回退:', error.message) }
+        try { return await pcSearch(keyword, cookie) } catch (error) {
+            // PC 搜索接口偶尔返回 200 空正文，直接使用公开搜索避免误报登录失败。
+            if (!/空响应/.test(String(error?.message || ''))) {
+                console.warn('[Qishui] 登录搜索回退:', error.message)
+            }
+        }
     }
     return publicSearch(keyword)
 }
@@ -522,6 +536,11 @@ const get_pc_song_url = async (id, cookie, options = {}) => {
         },
         timeout: 12000,
     })
+    console.log('[Qishui] track_v2 平台响应', JSON.stringify({
+        id: text(id),
+        requestedQuality: text(options.quality) || 'standard',
+        response: json,
+    }))
     return selectSongStream(collectStreams(json), options)
 }
 
@@ -534,7 +553,12 @@ const get_song_url = async (id, cookie, options = {}) => {
             preloadQishuiAudio(stream.url, stream.auth)
         }
         return stream
-    } catch {
+    } catch (error) {
+        console.warn('[Qishui] 获取播放流失败', JSON.stringify({
+            id: text(id),
+            requestedQuality: text(options.quality) || 'standard',
+            error: error?.message || String(error),
+        }))
         // PC 完整流失败交给客户端跨源回退，不降级到其它试听流。
         return null
     }

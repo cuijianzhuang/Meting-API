@@ -40,6 +40,16 @@ export default async (ctx) => {
 
         let url = payload?.url || ''
         if (!url) {
+            console.warn('[Meting] no url', JSON.stringify({
+                server,
+                type,
+                id,
+                requestedQuality: quality || 'standard',
+                hasActiveCookie: Boolean(cookie),
+                cookieValid: storedCookie?.isValid !== false,
+                cookieVip: Boolean(storedCookie?.userInfo?.canPlayVip),
+                cookieSvip: Boolean(storedCookie?.userInfo?.canPlaySvip),
+            }))
             ctx.status(403)
             return ctx.json({ error: 'no url' })
         }
