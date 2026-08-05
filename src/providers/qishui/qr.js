@@ -80,6 +80,15 @@ const cleanupSessions = () => {
     }
 }
 
+const scheduleSessionCleanup = (token, session) => {
+    const timer = setTimeout(() => {
+        if (sessions.get(token) !== session) return
+        sessions.delete(token)
+        void closeQishuiSignerSession(session.sessionKey)
+    }, SESSION_TTL_MS + 1000)
+    timer.unref?.()
+}
+
 const officialScanUrl = (indexUrl) => {
     const source = new URL(text(indexUrl))
     const token = text(source.searchParams.get('token'))
@@ -274,6 +283,7 @@ export const createQishuiQr = async () => {
     // 通过 light/invoke/scan_login 入口跳转到有效的扫码确认页。
     const qrimg = await QRCode.toDataURL(scanUrl, { errorCorrectionLevel: 'M', margin: 2, width: 360 })
     sessions.set(token, session)
+    scheduleSessionCleanup(token, session)
     return {
         platform: 'qishui',
         key: token,

@@ -81,6 +81,13 @@ const getBrowser = async () => {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-sync',
+            '--disable-default-apps',
+            '--disable-component-update',
+            '--renderer-process-limit=1',
             '--disable-web-security',
             // Passport 在本地安全页发起跨站 XHR；阻断第三方 Cookie 会导致
             // 扫码状态成功但 sessionid 永远无法写入隔离浏览器会话。
@@ -97,42 +104,49 @@ const getBrowser = async () => {
 const getPage = async (sessionKey) => {
     if (pages.has(sessionKey)) return pages.get(sessionKey)
     const pagePromise = (async () => {
-        const browser = await getBrowser()
-        const context = await browser.createBrowserContext()
-        const page = await context.newPage()
-        const diagnostics = []
-        page.on('console', message => diagnostics.push(`console:${message.type()}:${message.text()}`))
-        page.on('pageerror', error => diagnostics.push(`pageerror:${error.message}`))
-        page.on('requestfailed', request => diagnostics.push(`requestfailed:${request.url()}:${request.failure()?.errorText || ''}`))
-        await page.setUserAgent(
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-            + '(KHTML, like Gecko) SodaMusic/3.2.1 Chrome/136.0.7103.59 Safari/537.36',
-        )
-        await page.setRequestInterception(true)
-        page.on('request', request => {
-            if (/\/obj\/rc-client-security\/web\/stable\/1\.0\.0\.41\/bdms\.js/i.test(request.url())) {
-                request.respond({
-                    status: 200,
-                    contentType: 'text/javascript; charset=utf-8',
-                    body: fs.readFileSync(path.join(SECURITY_DIR, 'bdms.js')),
-                }).catch(() => {})
-                return
-            }
-            request.continue().catch(() => {})
-        })
-        const assets = await startAssetServer()
-        await page.goto(assets.url, { waitUntil: 'networkidle0', timeout: 30000 })
+        let context
         try {
-            await page.waitForFunction(() => Boolean(window.bdms), { timeout: 20000 })
-        } catch {
-            const state = await page.evaluate(() => ({
-                glue: window._sdkGlueVersionMap,
-                bdms: typeof window.bdms,
-                traces: (window.__qishuiSecurityTrace || []).slice(-20),
-            })).catch(() => ({}))
-            throw new Error(`汽水安全组件初始化失败: ${JSON.stringify({ diagnostics: diagnostics.slice(-20), state })}`)
+            const browser = await getBrowser()
+            context = await browser.createBrowserContext()
+            const page = await context.newPage()
+            const diagnostics = []
+            page.on('console', message => diagnostics.push(`console:${message.type()}:${message.text()}`))
+            page.on('pageerror', error => diagnostics.push(`pageerror:${error.message}`))
+            page.on('requestfailed', request => diagnostics.push(`requestfailed:${request.url()}:${request.failure()?.errorText || ''}`))
+            await page.setUserAgent(
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                + '(KHTML, like Gecko) SodaMusic/3.2.1 Chrome/136.0.7103.59 Safari/537.36',
+            )
+            await page.setRequestInterception(true)
+            page.on('request', request => {
+                if (/\/obj\/rc-client-security\/web\/stable\/1\.0\.0\.41\/bdms\.js/i.test(request.url())) {
+                    request.respond({
+                        status: 200,
+                        contentType: 'text/javascript; charset=utf-8',
+                        body: fs.readFileSync(path.join(SECURITY_DIR, 'bdms.js')),
+                    }).catch(() => {})
+                    return
+                }
+                request.continue().catch(() => {})
+            })
+            const assets = await startAssetServer()
+            await page.goto(assets.url, { waitUntil: 'networkidle0', timeout: 30000 })
+            try {
+                await page.waitForFunction(() => Boolean(window.bdms), { timeout: 20000 })
+            } catch {
+                const state = await page.evaluate(() => ({
+                    glue: window._sdkGlueVersionMap,
+                    bdms: typeof window.bdms,
+                    traces: (window.__qishuiSecurityTrace || []).slice(-20),
+                })).catch(() => ({}))
+                throw new Error(`汽水安全组件初始化失败: ${JSON.stringify({ diagnostics: diagnostics.slice(-20), state })}`)
+            }
+            return { page, context }
+        } catch (error) {
+            // 初始化失败时也释放已创建的上下文，避免留下孤立 Chromium renderer。
+            if (context) await context.close().catch(() => {})
+            throw error
         }
-        return { page, context }
     })().catch(error => {
         pages.delete(sessionKey)
         throw error
