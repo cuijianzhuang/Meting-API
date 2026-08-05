@@ -9,6 +9,8 @@
 - 三平台支持：网易云音乐、QQ 音乐、汽水音乐
 - 汽水音乐：公开搜索、歌曲信息、歌词、加密音频解密代理、个性化漫游
 - 汽水扫码登录：Meting 在 Linux/Node 环境直接生成官方二维码并维护登录会话
+- 汽水扫码安全验证：支持将短信/手机号二次验证资源转发给前端完成认证
+- 汽水歌单：支持通过歌单 ID 获取歌单详情和歌曲列表
 - 高音质取链：`type=url` 支持多档 VIP/SVIP 音质，返回实际档位中文名，不可用时自动降级
 - 网易云电台：节目列表、电台详情、单集详情、热门推荐、电台搜索
 - 网易云私人漫游：`fm` 多模式（熟悉 / 探索 / AI DJ / 场景漫游等）
@@ -30,7 +32,7 @@
 | 类型 | 说明 | `id` | 网易云 | QQ音乐 | 汽水音乐 |
 |------|------|------|:---:|:---:|:---:|
 | `song` | 单曲信息 | 歌曲 ID | ✅ | ✅ | ✅ |
-| `playlist` | 歌单 | 歌单 ID | ✅ | ✅ | ❌ |
+| `playlist` | 歌单 | 歌单 ID | ✅ | ✅ | ✅ |
 | `artist` | 歌手歌曲 | 歌手 ID | ✅ | ❌ | ❌ |
 
 ### 搜索
@@ -85,14 +87,16 @@
 |------|-----|-----------------|
 | 网易云 | 极高 / 无损 / 高解析度无损 / 高清臻音 | 沉浸环绕声 / 超清母带 / 杜比全景声 |
 | QQ 音乐 | HQ高品质 / SQ无损品质 | 臻品全景声 / 臻品母带 |
-| 汽水音乐 | 高品质 / 无损（需有效登录 Cookie，具体取决于账号和歌曲资源） | 暂无独立 SVIP 音质档 |
+| 汽水音乐 | 较高 / 高品质 / 无损 | 录音室 / 全景（需有效会员 Cookie 和歌曲资源） |
 
 | quality | 网易云 | QQ音乐 | 汽水音乐 | 备注 |
 |---------|--------|--------|----------|------|
 | `128` / `standard` | 标准 | 标准品质 | 标准 | 默认 |
-| `higher` | 较高 | ❌ | ❌ | 仅网易 |
-| `320` / `exhigh` | 极高 | HQ高品质 | 高品质 | 会员和歌曲资源不足时自动降级 |
+| `higher` | 较高 | ❌ | 较高 | 按平台资源自动降级 |
+| `320` / `exhigh` | 极高 | HQ高品质 | 较高 | 会员和歌曲资源不足时自动降级 |
 | `flac` / `lossless` | 无损 | SQ无损品质 | 无损 | 会员和歌曲资源不足时自动降级 |
+| `studio` | ❌ | ❌ | 录音室 | 汽水最高档，需账号和歌曲支持 |
+| `atmos` | ❌ | 臻品全景声 | 全景 | 汽水请求参数兼容 `spatial` / `hi_res` |
 | `hires` | 高解析度无损 | ❌ | 曲目需有 Hi-Res；仅网易 VIP |
 | `jyeffect` | 高清臻音 | ❌ | 仅网易 VIP |
 | `sky` | 沉浸环绕声 | ❌ | 仅网易 SVIP |
@@ -232,7 +236,16 @@ GitHub → Actions → **Build and Push Docker Image** → Run workflow。
 | `GID` | `1010` | Docker 容器用户 GID |
 ### 汽水扫码
 
-汽水扫码已直接集成在 Meting 中，不需要额外服务或环境变量。Node/Linux 部署可通过 `/admin/qr/create` 和 `/admin/qr/check` 完成汽水音乐账号登录；请使用汽水音乐 App 扫码确认。若账号触发额外安全验证，本次二维码会被拒绝，需重新生成后再试。
+汽水扫码已直接集成在 Meting 中，不需要额外服务或环境变量。Node/Linux 部署可通过 `/admin/qr/create` 和 `/admin/qr/check` 完成汽水音乐账号登录；请使用汽水音乐 App 扫码确认。
+
+如果扫码后返回二次验证，前端可按以下流程完成验证：
+
+1. 调用 `POST /admin/qr/qishui/verify/start` 初始化验证会话。
+2. 通过 `GET /admin/qr/qishui/security/:asset` 获取验证页面所需资源。
+3. 将验证页面请求转发到 `POST /admin/qr/qishui/request`。
+4. 验证完成后调用 `POST /admin/qr/qishui/verify/complete`，再继续轮询 `/admin/qr/check`。
+
+验证完成后会话会返回成功状态和登录 Cookie；验证资源及请求接口仅用于当前二维码会话，不应长期缓存。
 
 ### 手动添加汽水 Cookie
 
@@ -277,6 +290,9 @@ GET /api?server=netease&type=song&id=254059
 
 # QQ音乐：获取歌单内歌曲列表
 GET /api?server=tencent&type=playlist&id=7326220405
+
+# 汽水音乐：获取歌单详情和歌曲列表
+GET /api?server=qishui&type=playlist&id=7397692920558452788
 ```
 
 **搜索**
@@ -325,6 +341,9 @@ GET /api?server=tencent&type=url&id=0010BrWk2SucQr&quality=flac&redirect=1
 
 # QQ · 歌词（纯文本）
 GET /api?server=tencent&type=lrc&id=0010BrWk2SucQr
+
+# 汽水音乐 · 录音室音质
+GET /api?server=qishui&type=url&id=汽水歌曲ID&quality=studio
 ```
 
 ### 响应格式
@@ -336,7 +355,8 @@ GET /api?server=tencent&type=lrc&id=0010BrWk2SucQr
     "quality": "无损"
   }
   ```
-  请求 `quality=jyeffect` 若平台静默降级，`quality` 会显示实际档位（如「无损」）。追加 `redirect=1` 时 302 到音频；以 `@` 开头时返回纯文本- `type=pic`：302 重定向到图片 URL
+  请求 `quality=jyeffect` 若平台静默降级，`quality` 会显示实际档位（如「无损」）。追加 `redirect=1` 时 302 到音频；以 `@` 开头时返回纯文本
+- `type=pic`：302 重定向到图片 URL
 - `type=lrc`：返回纯文本歌词（含翻译合并）
 - 其他类型：返回 JSON 数组
 
@@ -497,6 +517,17 @@ X-Auth-Token: your-token
 | POST | `/admin/cookies/:id/verify` | 验证 Cookie |
 | POST | `/admin/cookies/:id/refresh` | 刷新 QQ 音乐 Cookie |
 | POST | `/admin/cookies/validate` | 在线验证（不保存） |
+
+#### 扫码登录
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/admin/qr/create` | 创建网易云、QQ音乐或汽水音乐二维码会话 |
+| POST | `/admin/qr/check` | 查询扫码会话状态并获取登录 Cookie |
+| POST | `/admin/qr/qishui/verify/start` | 初始化汽水二次验证 |
+| GET | `/admin/qr/qishui/security/:asset` | 获取汽水二次验证资源 |
+| POST | `/admin/qr/qishui/request` | 转发汽水二次验证请求 |
+| POST | `/admin/qr/qishui/verify/complete` | 完成汽水二次验证 |
 
 #### 用户管理（管理员）
 
