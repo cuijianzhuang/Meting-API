@@ -374,6 +374,11 @@ const buildCookie = (data) => {
 /** qrcodeID -> { phase, result, client, expiresAt, inflight } */
 const tencentQrSessions = new Map()
 
+const shortQrId = (value) => {
+    const raw = String(value || '')
+    return raw ? `${raw.slice(0, 8)}...` : '-'
+}
+
 const closeSessionClient = (session) => {
     if (!session) return
     const client = session?.client
@@ -529,10 +534,27 @@ const attachMobileStatus = (qrcodeId, session) => {
 
     client.on('error', (error) => {
         if (session.phase === 'confirmed' || session.phase === 'expired') return
+        const message = error?.message || ''
+        if (/server moved/i.test(message) && session.mqttRetryCount < 3) {
+            session.mqttRetryCount += 1
+            closeSessionClient(session)
+            const delay = session.mqttRetryCount * 1000
+            console.warn('[QQ QR] MQTT 节点迁移，准备重连', JSON.stringify({
+                qrcodeId: shortQrId(qrcodeId),
+                retry: session.mqttRetryCount,
+                delayMs: delay,
+            }))
+            setTimeout(() => {
+                if (session.phase === 'waiting' || session.phase === 'scanned') {
+                    attachMobileStatus(qrcodeId, session)
+                }
+            }, delay)
+            return
+        }
         session.phase = 'error'
         session.result = {
             status: 'error',
-            message: error?.message || 'QQ 音乐扫码连接失败，请重试',
+            message: message || 'QQ 音乐扫码连接失败，请重试',
         }
         closeSessionClient(session)
     })
@@ -552,12 +574,19 @@ export const createTencentQrSession = async () => {
         result: { status: 'waiting', message: '等待 QQ 音乐 App 扫码' },
         client: null,
         inflight: null,
+        mqttRetryCount: 0,
         expiresAt: Date.now() + Math.max(Number(data.expiresIn) || 900, 60) * 1000,
     }
     const oldSession = tencentQrSessions.get(qrcodeId)
     closeSessionClient(oldSession)
     tencentQrSessions.set(qrcodeId, session)
     attachMobileStatus(qrcodeId, session)
+    console.info('[QQ QR] 会话创建', JSON.stringify({
+        pid: process.pid,
+        qrcodeId: shortQrId(qrcodeId),
+        expiresInMs: Math.max(0, session.expiresAt - Date.now()),
+        sessionCount: tencentQrSessions.size,
+    }))
 
     return {
         platform: 'tencent',
@@ -577,8 +606,19 @@ export const checkTencentQrSession = async ({ qrsig }) => {
     }
     const session = tencentQrSessions.get(qrcodeId)
     if (!session) {
+        console.warn('[QQ QR] 检查不到会话', JSON.stringify({
+            pid: process.pid,
+            qrcodeId: shortQrId(qrcodeId),
+            sessionCount: tencentQrSessions.size,
+        }))
         return { status: 'expired', message: '二维码会话不存在或已过期' }
     }
+    console.info('[QQ QR] 检查会话', JSON.stringify({
+        pid: process.pid,
+        qrcodeId: shortQrId(qrcodeId),
+        phase: session.phase,
+        expiresInMs: Math.max(0, session.expiresAt - Date.now()),
+    }))
     if (Date.now() >= Math.min(session.expiresAt, Date.now() + SESSION_EXPIRE_MS)) {
         session.phase = 'expired'
         session.result = { status: 'expired', message: '二维码已过期，请刷新' }
