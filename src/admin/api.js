@@ -274,7 +274,7 @@ export const adminRoutes = (app) => {
         }
         if (!cookie) return c.json({ success: false, error: '房间音源登录凭证为空' }, 400)
         try {
-            const data = await provider.handle(type, id, cookie, { quality: c.req.query('quality') })
+            let data = await provider.handle(type, id, cookie, { quality: c.req.query('quality') })
             if (server === 'qishui' && type === 'url' && data?.url && data?.auth) {
                 data = wrapQishuiPlayPayload(c, data)
             }

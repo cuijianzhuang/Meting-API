@@ -117,6 +117,8 @@ export const decryptQishuiAudio = (source, spadeA) => {
 const cache = new Map()
 const inflightLoads = new Map()
 const MAX_CACHE_BYTES = 512 * 1024 * 1024
+const MAX_DISK_CACHE_BYTES = 512 * 1024 * 1024
+const DISK_CACHE_TTL_MS = 6 * 60 * 60 * 1000
 let cacheBytes = 0
 
 const diskCacheDir = (() => {
@@ -128,6 +130,7 @@ const diskCacheDir = (() => {
 
 let diskFs = null
 let diskPath = null
+let diskCleanupPromise = null
 
 const getDiskModules = async () => {
     if (!diskCacheDir) return null
@@ -135,6 +138,7 @@ const getDiskModules = async () => {
     diskFs = await import('node:fs/promises')
     diskPath = await import('node:path')
     await diskFs.mkdir(diskCacheDir, { recursive: true })
+    void cleanupDiskCache()
     return { fs: diskFs, path: diskPath }
 }
 
@@ -142,6 +146,55 @@ const diskPaths = (key) => ({
     body: `${diskCacheDir}/${key}.bin`,
     meta: `${diskCacheDir}/${key}.json`,
 })
+
+const cleanupDiskCache = async () => {
+    if (!diskFs || !diskCacheDir) return
+    if (diskCleanupPromise) return diskCleanupPromise
+    diskCleanupPromise = (async () => {
+        const entries = []
+        try {
+            const names = await diskFs.readdir(diskCacheDir)
+            for (const name of names) {
+                if (!name.endsWith('.json')) continue
+                const key = name.slice(0, -5)
+                const paths = diskPaths(key)
+                try {
+                    const meta = JSON.parse(await diskFs.readFile(paths.meta, 'utf8'))
+                    const stat = await diskFs.stat(paths.body)
+                    entries.push({ key, at: Number(meta.at) || 0, bytes: stat.size })
+                } catch {
+                    await diskFs.unlink(paths.meta).catch(() => {})
+                    await diskFs.unlink(paths.body).catch(() => {})
+                }
+            }
+
+            const now = Date.now()
+            const expired = entries.filter((entry) => !entry.at || now - entry.at > DISK_CACHE_TTL_MS)
+            for (const entry of expired) {
+                const paths = diskPaths(entry.key)
+                await diskFs.unlink(paths.meta).catch(() => {})
+                await diskFs.unlink(paths.body).catch(() => {})
+            }
+
+            const active = entries
+                .filter((entry) => !expired.includes(entry))
+                .sort((a, b) => a.at - b.at)
+            let total = active.reduce((sum, entry) => sum + entry.bytes, 0)
+            for (const entry of active) {
+                if (total <= MAX_DISK_CACHE_BYTES) break
+                const paths = diskPaths(entry.key)
+                await diskFs.unlink(paths.meta).catch(() => {})
+                await diskFs.unlink(paths.body).catch(() => {})
+                total -= entry.bytes
+            }
+        } catch (error) {
+            console.warn('[QishuiAudio] 磁盘缓存清理失败:', error?.message || error)
+        } finally {
+            diskCleanupPromise = null
+        }
+    })()
+    return diskCleanupPromise
+}
 
 const readDiskCache = async (key) => {
     const mods = await getDiskModules()
@@ -175,6 +228,7 @@ const writeDiskCache = async (key, value) => {
         }))
         await fs.rename(tmpBody, paths.body)
         await fs.rename(tmpMeta, paths.meta)
+        await cleanupDiskCache()
     } catch (error) {
         await fs.unlink(tmpBody).catch(() => {})
         await fs.unlink(tmpMeta).catch(() => {})
@@ -312,6 +366,7 @@ export const buildQishuiAudioUrl = (ctx, { url, auth, mimeType }) => {
     const token = createQishuiPlayToken(url, auth, mimeType)
     const endpoint = new URL(`${get_public_base(ctx)}/audio/qishui`)
     endpoint.searchParams.set('t', token)
+    endpoint.searchParams.set('k', cacheKey(url, auth))
     if (mimeType) endpoint.searchParams.set('mime_type', mimeType)
     return endpoint.toString()
 }
@@ -351,6 +406,17 @@ export const qishuiAudioResponse = async (ctx) => {
     const url = entry.url
     const auth = entry.auth
     if (!/^https?:\/\//i.test(url)) return ctx.json({ error: 'invalid qishui audio url' }, 400)
+
+    const mode = String(ctx.req.query('mode') || '').trim().toLowerCase()
+
+    // OpenMusic 只需要源地址和密钥，随后直接从汽水 CDN 下载，避免音频再次经过 Meting 中转。
+    if (mode === 'source') {
+        return ctx.json({
+            url,
+            auth,
+            mimeType: entry.mimeType || 'audio/mp4',
+        })
+    }
 
     const signal = ctx.req.raw?.signal
     const contentKey = cacheKey(url, auth)

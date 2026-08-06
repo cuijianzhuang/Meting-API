@@ -229,9 +229,24 @@ const postMusicApi = async (method, param, comm) => {
         const message = payload?.data?.errMsg || payload?.data?.errmsg || payload?.code || result?.code
         const error = new Error(`QQ 音乐登录失败: ${message || '未知错误'}${payload?.code ? `（错误码 ${payload.code}）` : ''}`)
         error.code = Number(payload?.code || result?.code || 0)
+        error.data = payload?.data || {}
         throw error
     }
     return payload?.data || {}
+}
+
+const formatLoginError = (code, data = {}) => {
+    const messages = {
+        1000: '登录鉴权参数无效或已过期，请重新扫码',
+        104401: '登录鉴权参数无效或已过期，请重新扫码',
+        104400: '登录鉴权参数无效或已过期，请重新扫码',
+        20279: 'QQ 音乐登录设备数量超限，请在官方客户端移除旧设备后重试',
+        20277: 'QQ 音乐账号受限，暂时无法登录',
+        20278: 'QQ 音乐账号受限，暂时无法登录',
+        20450: 'QQ 音乐账号已被封禁',
+        104604: 'QQ 音乐登录操作过于频繁，请稍后重试',
+    }
+    return messages[code] || data?.errMsg || data?.errmsg || 'QQ 音乐登录失败'
 }
 
 const createQrBySignedApi = async () => {
@@ -318,13 +333,6 @@ const callLoginApi = async (method, param, comm = {}) => {
     return postMusicApi(method, param, await buildAndroidComm(comm))
 }
 
-// QQ 节点迁移或长时间运行后，GetSession 返回的 uid/sid 可能失效。
-const resetMobileSession = () => {
-    mobileDevice.uid = ''
-    mobileDevice.sid = ''
-    mobileDevice.sessionPromise = null
-}
-
 const cookieValue = (cookie, name) => {
     const value = cookie?.[name]
     return typeof value === 'string' ? value : value?.value || ''
@@ -401,9 +409,11 @@ const confirmMobileLogin = async (qrcodeId, payload) => {
     try {
         data = await callLoginApi('Login', loginParams, { tmeLoginType: 6 })
     } catch (error) {
-        if (Number(error?.code) !== 20279) throw error
-        resetMobileSession()
-        data = await callLoginApi('Login', loginParams, { tmeLoginType: 6 })
+        const code = Number(error?.code || 0)
+        const mapped = new Error(`${formatLoginError(code, error?.data)}（错误码 ${code || '未知'}）`)
+        mapped.code = code
+        mapped.cause = error
+        throw mapped
     }
     return buildCookie(data)
 }
