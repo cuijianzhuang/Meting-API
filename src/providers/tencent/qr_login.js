@@ -423,7 +423,19 @@ const confirmMobileLogin = async (qrcodeId, payload) => {
     return buildCookie(data)
 }
 
-const attachMobileStatus = (qrcodeId, session) => {
+const buildMqttRedirectPath = (currentPath, serverReference) => {
+    const path = String(currentPath || '/ws/handshake').replace(/\/+$/, '')
+    const reference = String(serverReference || '').trim().replace(/^\/+|\/+$/g, '')
+    if (!reference) return path
+    const parts = path.split('/')
+    if (parts.at(-1)?.includes(':')) {
+        parts[parts.length - 1] = reference
+        return parts.join('/')
+    }
+    return `${path}/${reference}`
+}
+
+const attachMobileStatus = (qrcodeId, session, mqttPath = '/ws/handshake') => {
     const clientId = `${Date.now()}${Math.floor(1000 + Math.random() * 9000)}`
     const connectProperties = {
         authenticationMethod: 'pass',
@@ -435,7 +447,7 @@ const attachMobileStatus = (qrcodeId, session) => {
             userID: qrcodeId,
         },
     }
-    const client = mqtt.connect('wss://mu.y.qq.com/ws/handshake', {
+    const client = mqtt.connect(`wss://mu.y.qq.com${mqttPath}`, {
         protocolVersion: 5,
         clientId,
         clean: true,
@@ -452,6 +464,10 @@ const attachMobileStatus = (qrcodeId, session) => {
         },
     })
     session.client = client
+
+    client.on('packetreceive', (packet) => {
+        if (packet?.cmd === 'connack') session.lastConnack = packet
+    })
 
     client.on('connect', () => {
         client.subscribe(`management.qrcode_login/${qrcodeId}`, {
@@ -537,16 +553,21 @@ const attachMobileStatus = (qrcodeId, session) => {
         const message = error?.message || ''
         if (/server moved/i.test(message) && session.mqttRetryCount < 3) {
             session.mqttRetryCount += 1
+            const reference = session.lastConnack?.properties?.serverReference
+            const nextPath = buildMqttRedirectPath(mqttPath, reference)
+            session.lastConnack = null
             closeSessionClient(session)
             const delay = session.mqttRetryCount * 1000
             console.warn('[QQ QR] MQTT 节点迁移，准备重连', JSON.stringify({
                 qrcodeId: shortQrId(qrcodeId),
                 retry: session.mqttRetryCount,
                 delayMs: delay,
+                redirected: Boolean(reference),
+                path: nextPath,
             }))
             setTimeout(() => {
                 if (session.phase === 'waiting' || session.phase === 'scanned') {
-                    attachMobileStatus(qrcodeId, session)
+                    attachMobileStatus(qrcodeId, session, nextPath)
                 }
             }, delay)
             return
