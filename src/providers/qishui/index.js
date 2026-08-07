@@ -539,7 +539,10 @@ const get_pc_song_url = async (id, cookie, options = {}) => {
     console.log('[Qishui] track_v2 平台响应', JSON.stringify({
         id: text(id),
         requestedQuality: text(options.quality) || 'standard',
-        response: json,
+        statusCode: json?.status_code,
+        statusMessage: json?.status_info?.status_msg,
+        hasTrackPlayer: Boolean(json?.track_player),
+        hasVideoModel: Boolean(json?.track_player?.video_model),
     }))
     return selectSongStream(collectStreams(json), options)
 }
