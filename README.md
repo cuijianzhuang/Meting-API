@@ -2,7 +2,7 @@
 
 多平台音乐 API 服务，支持网易云音乐、QQ 音乐和汽水音乐，提供 Cookie 管理、会员歌曲播放、自动续期和监测通知功能。
 
-**当前版本：3.1.0**
+**当前版本：3.1.1**
 
 ## 功能特性
 
@@ -180,7 +180,7 @@ docker run -d --name meting \
   w3126197382/meting-api:latest
 ```
 
-宝塔升级：拉取新镜像后重建容器，镜像填 `w3126197382/meting-api:latest`（或指定版本如 `3.1.0`），保留原有 `-v ...:/app/data` 挂载即可。
+宝塔升级：拉取新镜像后重建容器，镜像填 `w3126197382/meting-api:latest`（或指定版本如 `3.1.1`），保留原有 `-v ...:/app/data` 挂载即可。
 
 #### 发布 Docker 镜像
 
@@ -189,7 +189,7 @@ docker run -d --name meting \
 **方式一：打版本标签（推荐）**
 
 ```bash
-npm run patch   # 3.1.0 → 3.1.1，并 push main + tag
+npm run patch   # 3.1.1 → 3.1.2，并 push main + tag
 # 或 npm run minor / npm run major
 ```
 

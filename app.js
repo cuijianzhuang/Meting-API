@@ -517,7 +517,7 @@ app.get('/', (c) => {
             <div class="info-grid">
                 <div class="info-item">
                     <div class="info-label">版本</div>
-                    <div class="info-value">3.1.0</div>
+                    <div class="info-value">3.1.1</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">运行环境</div>
