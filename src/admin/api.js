@@ -293,7 +293,7 @@ export const adminRoutes = (app) => {
         const cookie = String(body.cookie || '').trim()
         const mode = String(body.mode || '').trim()
         const excludeIds = new Set(Array.isArray(body.excludeIds) ? body.excludeIds.map((id) => String(id).trim()).filter(Boolean) : [])
-        if (!['netease', 'qishui'].includes(platform) || !cookie) {
+        if (!['netease', 'tencent', 'qishui'].includes(platform) || !cookie) {
             return c.json({ success: false, error: '漫游平台或登录凭证无效' }, 400)
         }
         const provider = new Providers().get(platform)

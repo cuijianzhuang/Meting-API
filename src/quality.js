@@ -13,10 +13,10 @@ export const VALID_QUALITY = {
 }
 
 /**
- * 音质中文名与会员要求
- * 网易：高清臻音及以下多为 VIP；以上（sky / jymaster / dolby）需 SVIP
- * QQ：对齐官方 — 标准品质 / HQ高品质 / SQ无损品质 / 臻品全景声 / 臻品母带
- *     （dtsX 为音效、NAC 为省流编解码，本 API 暂不提供）
+ * 音质中文名与会员要求（按平台）
+ * 网易：320 / 无损 / Hi-Res / 臻音 → VIP；sky / jymaster / dolby → SVIP
+ * QQ：HQ / SQ → VIP；臻品全景声 / 臻品母带 → 超级会员（文档记作超会 / SVIP）
+ * 汽水：320 → VIP；无损 / 录音室 / 全景 → SVIP（不支持 higher）
  */
 export const QUALITY_META = {
     '128': { name: '标准', tencent: '标准品质', vip: false, svip: false },
@@ -24,19 +24,19 @@ export const QUALITY_META = {
     'higher': { name: '较高', vip: false, svip: false },
     '320': { name: '极高', tencent: 'HQ高品质', vip: true, svip: false },
     'exhigh': { name: '极高', tencent: 'HQ高品质', vip: true, svip: false },
-    'flac': { name: '无损', tencent: 'SQ无损品质', vip: true, svip: false },
-    'lossless': { name: '无损', tencent: 'SQ无损品质', vip: true, svip: false },
+    'flac': { name: '无损', tencent: 'SQ无损品质', vip: true, svip: false, qishuiSvip: true },
+    'lossless': { name: '无损', tencent: 'SQ无损品质', vip: true, svip: false, qishuiSvip: true },
     // 网易云
     'hires': { name: '高解析度无损', vip: true, svip: false },
     'jyeffect': { name: '高清臻音', vip: true, svip: false },
     'sky': { name: '沉浸环绕声', vip: false, svip: true },
     'jymaster': { name: '超清母带', vip: false, svip: true },
     'dolby': { name: '杜比全景声', vip: false, svip: true },
-    // QQ 音乐（超级会员独家）
-    'atmos': { name: '臻品全景声', qishui: '全景声', tencent: '臻品全景声', vip: false, svip: true },
+    // QQ 音乐（超级会员）/ 汽水全景
+    'atmos': { name: '臻品全景声', qishui: '全景声', tencent: '臻品全景声', vip: false, svip: true, qishuiSvip: true },
     'master': { name: '臻品母带', tencent: '臻品母带', vip: false, svip: true },
-    // 汽水音乐：录音室音质 / 全景声 / 无损仅 SVIP 可用
-    'studio': { name: '录音室音质', qishui: '录音室音质', vip: false, svip: true },
+    // 汽水音乐
+    'studio': { name: '录音室音质', qishui: '录音室音质', vip: false, svip: true, qishuiSvip: true },
 }
 
 export const isValidQuality = (server, quality) => {

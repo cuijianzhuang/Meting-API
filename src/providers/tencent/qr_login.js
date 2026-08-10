@@ -203,7 +203,13 @@ const buildAndroidComm = async (overrides = {}) => {
     }
 }
 
-const postMusicApi = async (method, param, comm) => {
+/**
+ * 调用 music.login.LoginServer。
+ * @param {{ method: string, param: object, comm?: object, allowErrorCodes?: boolean }} options
+ * @returns {Promise<{ code: number, data: object, raw: object }>}
+ */
+export const postLoginServer = async ({ method, param, comm: commOverrides = {}, allowErrorCodes = false }) => {
+    const comm = await buildAndroidComm(commOverrides)
     const body = JSON.stringify({
         comm,
         req_0: {
@@ -225,14 +231,21 @@ const postMusicApi = async (method, param, comm) => {
     }
     const result = await response.json()
     const payload = result?.req_0
-    if (result?.code !== 0 || payload?.code !== 0) {
-        const message = payload?.data?.errMsg || payload?.data?.errmsg || payload?.code || result?.code
+    const code = Number(payload?.code ?? result?.code ?? 0)
+    const data = payload?.data || {}
+    if (!allowErrorCodes && (result?.code !== 0 || payload?.code !== 0)) {
+        const message = data?.errMsg || data?.errmsg || payload?.code || result?.code
         const error = new Error(`QQ 音乐登录失败: ${message || '未知错误'}${payload?.code ? `（错误码 ${payload.code}）` : ''}`)
-        error.code = Number(payload?.code || result?.code || 0)
-        error.data = payload?.data || {}
+        error.code = code
+        error.data = data
         throw error
     }
-    return payload?.data || {}
+    return { code, data, raw: result }
+}
+
+const postMusicApi = async (method, param, comm) => {
+    const { data } = await postLoginServer({ method, param, comm, allowErrorCodes: false })
+    return data
 }
 
 const formatLoginError = (code, data = {}) => {
@@ -346,7 +359,7 @@ const buildCookie = (data) => {
     }
     const uin = String(musicId).startsWith('o') ? String(musicId) : `o${musicId}`
     const values = {
-        login_type: '2',
+        login_type: String(data.loginType || 6),
         tmeLoginMethod: '3',
         tmeLoginType: String(data.loginType || 6),
         uin,

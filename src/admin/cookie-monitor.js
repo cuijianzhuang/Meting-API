@@ -214,16 +214,26 @@ class CookieMonitor {
 
     async refreshTencentCookie(cookie) {
         try {
-            let refreshResult = null
+            // 优先完整 Cookie 续期（对齐 QQMusicApi refresh_credential，需 musickey + refresh_key 等）
+            let refreshResult = await refreshTencentCookie(cookie.cookie)
+
             const cookieObj = this.parseCookieString(cookie.cookie)
-            const refreshToken = cookieObj.psrf_qqrefresh_token || cookie.refreshToken
+            const refreshToken = cookieObj.psrf_qqrefresh_token || cookieObj.refresh_token || cookie.refreshToken
+            const uin = cookieObj.uin || cookieObj.wxuin || cookieObj.qqmusic_uin || ''
 
-            if (refreshToken) {
-                refreshResult = await refreshTencentCookieByRefreshToken(refreshToken, cookieObj.uin)
-            }
-
-            if (!refreshResult || !refreshResult.success) {
-                refreshResult = await refreshTencentCookie(cookie.cookie)
+            // 完整 Cookie 失败时，用解析出的字段再试一次（补全 refreshToken / uin 兜底）
+            if (!refreshResult?.success && refreshToken && uin) {
+                const fallback = await refreshTencentCookieByRefreshToken(refreshToken, uin, {
+                    musickey: cookieObj.qqmusic_key || cookieObj.qm_keyst || '',
+                    refresh_key: cookieObj.refresh_key || '',
+                    access_token: cookieObj.psrf_qqaccess_token || '',
+                    openid: cookieObj.psrf_qqopenid || '',
+                    tmeLoginType: cookieObj.tmeLoginType || cookieObj.login_type || '',
+                    unionid: cookieObj.unionid || '',
+                    str_musicid: cookieObj.str_musicid || '',
+                    psrf_access_token_expiresAt: cookieObj.psrf_access_token_expiresAt || '',
+                })
+                if (fallback?.success) refreshResult = fallback
             }
 
             if (refreshResult.success) {
