@@ -4,14 +4,20 @@ import { preloadQishuiAudio } from './audio.js'
 const PUBLIC_SEARCH = 'https://api-vehicle.volcengine.com/v2/search/type'
 const PUBLIC_DETAIL = 'https://api-vehicle.volcengine.com/v2/custom/contents'
 const PC_API = 'https://api.qishui.com'
+const LUNA_API = 'https://beta-luna.douyin.com'
 
 // 扫码拿到的是 Passport 网页会话，PC 接口必须使用与 qishui-api 一致的
 // 稳定客户端指纹；每次请求重新生成设备参数会触发“应用版本有风险”。
 const WEB_UA = 'LunaPC/3.3.0(359450208)'
 const PLAYLIST_WEB_UA = 'LunaPC/3.6.0(424921879)'
 const STREAM_WEB_UA = 'LunaPC/3.0.0(290101097)'
-const PC_DEVICE_ID = String(Date.now())
+const LUNA_ANDROID_UA = 'Luna/19.1.0 Android'
+const stablePcId = () => `${Date.now()}${randomBytes(2).readUInt16BE(0).toString().padStart(5, '0')}`.slice(0, 16)
+const PC_DEVICE_ID = stablePcId()
+const PC_INSTALL_ID = stablePcId()
 const PC_FP = PC_DEVICE_ID
+const ANDROID_DEVICE_ID = stablePcId()
+const ANDROID_INSTALL_ID = stablePcId()
 
 // song-tab 的推荐上下文需要跨请求保留；只保存不可逆的账号指纹和歌曲 ID，不保存 Cookie。
 const feedSessions = new Map()
@@ -56,7 +62,7 @@ const pcParams = (extra = {}) => {
         version_name: '3.3.0', version_code: '359450208', channel: 'official', build_mode: 'master',
         network_carrier: '', ac: 'wifi', tz_name: 'Asia/Shanghai', resolution: '',
         device_platform: 'windows', device_type: 'Windows', os_version: 'Windows 11', fp: PC_FP,
-        iid: '',
+        iid: PC_INSTALL_ID,
         ...extra,
     }
 }
@@ -67,15 +73,53 @@ const streamPcParams = (extra = {}) => pcParams({
     ...extra,
 })
 
-const urlWithParams = (base, params) => {
+const mediaPlayerAndroidParams = (extra = {}) => ({
+    aid: '386088', app_name: 'luna', region: 'cn', geo_region: 'cn', os_region: 'cn', sim_region: '',
+    device_id: ANDROID_DEVICE_ID, iid: ANDROID_INSTALL_ID, cdid: '',
+    version_name: '19.1.0', version_code: '19010000', channel: 'official', build_mode: 'release',
+    network_carrier: '', ac: 'wifi', tz_name: 'Asia/Shanghai', resolution: '',
+    device_platform: 'android', device_type: 'Pixel 8', os_version: '15', fp: ANDROID_DEVICE_ID,
+    ...extra,
+})
+
+const urlWithParams = (base, params, { includeEmpty = false } = {}) => {
     const url = new URL(base)
     Object.entries(params || {}).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value))
+        if (value !== undefined && value !== null && (includeEmpty || value !== '')) {
+            url.searchParams.set(key, String(value))
+        }
     })
     return url.toString()
 }
 
-const requestJson = async (url, { cookie = '', method = 'GET', body, timeout = 10000, headers: extraHeaders = {} } = {}) => {
+const cookieDiagnostic = (raw) => {
+    const normalized = normalizeCookie(raw)
+    if (!normalized) return ''
+    const names = normalized.split(';').map(part => part.split('=')[0].trim()).filter(Boolean)
+    return `<redacted; ${normalized.length} chars; keys=${names.join(',')}>`
+}
+
+const rawRequestLines = ({ method, url, headers, bodyText }) => {
+    const requestUrl = new URL(url)
+    const requestHeaders = Object.entries(headers).map(([name, value]) => {
+        return `${name}: ${name.toLowerCase() === 'cookie' ? cookieDiagnostic(value) : value}`
+    })
+    return [
+        `${method} ${requestUrl.pathname}${requestUrl.search} HTTP/1.1`,
+        `Host: ${requestUrl.host}`,
+        ...requestHeaders,
+        '',
+        bodyText || '',
+    ]
+}
+
+const printRawRequest = (request, label) => {
+    console.log([`[Qishui] ${label} 原始请求`, ...rawRequestLines(request)].join('\n'))
+}
+
+const requestJson = async (url, {
+    cookie = '', method = 'GET', body, timeout = 10000, headers: extraHeaders = {}, debugRaw = false, debugLabel = 'track_v2',
+} = {}) => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeout)
     try {
@@ -94,16 +138,41 @@ const requestJson = async (url, { cookie = '', method = 'GET', body, timeout = 1
                 ...(cookie ? { Cookie: normalizeCookie(cookie) } : {}),
                 ...extraHeaders,
         }
-        const response = await fetch(url, {
-            method,
-            body: bodyText,
-            signal: controller.signal,
-            headers,
-        })
-        if (!response.ok) throw new Error(`汽水接口返回 ${response.status}`)
+        if (debugRaw) printRawRequest({ method, url, headers, bodyText }, debugLabel)
+        let response
+        try {
+            response = await fetch(url, {
+                method,
+                body: bodyText,
+                signal: controller.signal,
+                headers,
+            })
+        } catch (error) {
+            if (debugRaw) {
+                const cause = error?.cause
+                console.error(`[Qishui] ${debugLabel} 请求异常`, JSON.stringify({
+                    name: error?.name || '',
+                    message: error?.message || String(error),
+                    causeName: cause?.name || '',
+                    causeMessage: cause?.message || '',
+                    causeCode: cause?.code || '',
+                    causeErrno: cause?.errno || '',
+                    causeSyscall: cause?.syscall || '',
+                    causeAddress: cause?.address || '',
+                    causePort: cause?.port || '',
+                    stack: error?.stack || '',
+                    causeStack: cause?.stack || '',
+                }))
+            }
+            throw error
+        }
         const responseText = await response.text()
+        if (!response.ok) throw new Error(`汽水接口返回 ${response.status}`)
         if (!responseText.trim()) {
-            throw new Error(`汽水接口返回空响应: ${new URL(url).pathname}`)
+            const cookieKeys = normalizeCookie(cookie).split(';').map(part => part.split('=')[0].trim()).filter(Boolean)
+            const hasPcSession = cookieKeys.some(name => /^(sessionid|sid_tt|sid_guard|odin_tt)$/i.test(name))
+            const hint = hasPcSession ? '' : '（Cookie 缺少 PC 会话字段 sessionid/sid_tt/sid_guard/odin_tt）'
+            throw new Error(`汽水接口返回空响应: ${new URL(url).pathname}${hint}`)
         }
         let json
         try {
@@ -348,19 +417,18 @@ const getPublicDetail = async (id) => {
     return array(json?.data?.list)[0] || null
 }
 
+const getSeoTrackDetail = async (id, cookie) => requestJson(urlWithParams(`${LUNA_API}/luna/h5/seo_track`, {
+    ...mediaPlayerAndroidParams(),
+    track_id: id,
+    device_platform: 'web',
+}), { cookie, timeout: 12000, headers: { 'User-Agent': LUNA_ANDROID_UA } })
+
 const get_song_info = async (id, cookie) => {
-    // 登录态下统一读取 PC track_v2，避免详情接口混入试听数据。
-    if (text(cookie)) {
-        try {
-            const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, streamPcParams({
-                track_id: id,
-                media_type: 'track',
-                queue_type: '',
-            })), { cookie, timeout: 12000, headers: { 'User-Agent': STREAM_WEB_UA } })
-            const item = collectMedia(json).map(mapMedia).find(Boolean)
-            if (item) return [item]
-        } catch {}
-    }
+    try {
+        const json = await getSeoTrackDetail(id, cookie)
+        const item = mapMedia(json?.seo_track?.track)
+        if (item) return [item]
+    } catch {}
     const item = mapMedia(await getPublicDetail(id))
     return item ? [item] : []
 }
@@ -404,15 +472,12 @@ const findLyrics = (payload) => {
 }
 
 const get_lyric = async (id, cookie) => {
-    if (text(cookie)) {
-        try {
-            const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, streamPcParams({ track_id: id, media_type: 'track' })), { cookie, headers: { 'User-Agent': STREAM_WEB_UA } })
-            const found = findLyrics(json)
-            if (found.lyric) return found
-        } catch {}
+    try {
+        return findLyrics(await getSeoTrackDetail(id, cookie))
+    } catch {
+        const detail = await getPublicDetail(id)
+        return findLyrics(detail || {})
     }
-    const detail = await getPublicDetail(id)
-    return findLyrics(detail || {})
 }
 
 const streamUrl = (value) => firstUrl(
@@ -519,14 +584,19 @@ const selectSongStream = (streams, options = {}) => {
     }
 }
 
-// 扫码会话使用 PC track_v2 获取完整曲目流。推荐漫游的 PC 请求必须带
-// daily_mix / track_reco 场景，否则同一首歌可能只返回试听或不完整音源。
+// 保留 PC track_v2 实现仅用于后续抓包对照；汽水取链需要 X-Medusa、X-Helios，
+// 当前不携带这两个签名头时改用手机端 media-player 接口。
+/*
 const get_pc_song_url = async (id, cookie, options = {}) => {
     const queueType = text(options.queueType) || 'daily_mix'
     const sceneName = text(options.sceneName) || 'track_reco'
-    const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, streamPcParams()), {
+    const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, streamPcParams(), { includeEmpty: true }), {
         cookie,
-        headers: { 'User-Agent': STREAM_WEB_UA },
+        headers: {
+            'User-Agent': STREAM_WEB_UA,
+            'x-luna-background-type': 'blur',
+            'x-luna-is-background-req': '1',
+        },
         method: 'POST',
         body: {
             media_type: 'track',
@@ -535,6 +605,7 @@ const get_pc_song_url = async (id, cookie, options = {}) => {
             track_id: id,
         },
         timeout: 12000,
+        debugRaw: true,
     })
     console.log('[Qishui] track_v2 平台响应', JSON.stringify({
         id: text(id),
@@ -546,12 +617,41 @@ const get_pc_song_url = async (id, cookie, options = {}) => {
     }))
     return selectSongStream(collectStreams(json), options)
 }
+*/
+
+const get_media_player_song_url = async (id, cookie, options = {}) => {
+    const json = await requestJson(urlWithParams(`${LUNA_API}/luna/media-player`, mediaPlayerAndroidParams(), { includeEmpty: true }), {
+        cookie,
+        method: 'POST',
+        body: {
+            media_id: id,
+            media_type: 'track',
+            queue_type: '',
+            enable_refresh_api: false,
+            enable_dash: true,
+        },
+        headers: {
+            'User-Agent': LUNA_ANDROID_UA,
+        },
+        timeout: 12000,
+        debugRaw: true,
+        debugLabel: 'media-player',
+    })
+    console.log('[Qishui] media-player 平台响应', JSON.stringify({
+        id: text(id),
+        requestedQuality: text(options.quality) || 'standard',
+        playerInfos: array(json?.player_infos, json?.playerInfos).length,
+        hasUrlPlayerInfo: Boolean(object(json?.player_infos?.[0], json?.playerInfos?.[0]).url_player_info),
+        hasVideoModel: Boolean(object(json?.player_infos?.[0], json?.playerInfos?.[0]).video_model),
+    }))
+    return selectSongStream(collectStreams(json), options)
+}
 
 const get_song_url = async (id, cookie, options = {}) => {
-    // 汽水播放只接受带登录 Cookie 的 PC 完整流；无 Cookie 直接无链。
+    // 汽水取链需要 X-Medusa、X-Helios，使用手机端接口替代。
     if (!text(cookie)) return null
     try {
-        const stream = await get_pc_song_url(id, cookie, options)
+        const stream = await get_media_player_song_url(id, cookie, options)
         if (stream?.url && stream?.auth) {
             preloadQishuiAudio(stream.url, stream.auth)
         }
@@ -562,7 +662,6 @@ const get_song_url = async (id, cookie, options = {}) => {
             requestedQuality: text(options.quality) || 'standard',
             error: error?.message || String(error),
         }))
-        // PC 完整流失败交给客户端跨源回退，不降级到其它试听流。
         return null
     }
 }

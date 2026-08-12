@@ -47,15 +47,36 @@ const decodeSpadeA = (value) => {
     return end > 1 && end <= decoded.length ? decoded.subarray(1, end).toString('utf8') : ''
 }
 
+const encryptedBoxTypes = new Set(['senc', 'saio', 'saiz', 'sinf', 'schi', 'tenc', 'schm', 'frma'])
+const containerBoxTypes = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl', 'stsd'])
+
+const writeUInt32BE = (value) => {
+    const output = Buffer.alloc(4)
+    output.writeUInt32BE(value)
+    return output
+}
+
 const parseSampleSizes = (data) => {
     const size = data.readUInt32BE(4)
     const count = data.readUInt32BE(8)
+    if (count > 200000) throw new Error('汽水音频样本数量异常')
     if (size) return Array.from({ length: count }, () => size)
+    if (12 + count * 4 > data.length) throw new Error('汽水音频 stsz 数据不完整')
     return Array.from({ length: count }, (_, index) => data.readUInt32BE(12 + index * 4))
+}
+
+const parseSampleToChunk = (data) => {
+    const count = data.readUInt32BE(4)
+    if (count > 20000 || 8 + count * 12 > data.length) throw new Error('汽水音频 stsc 数据不完整')
+    return Array.from({ length: count }, (_, index) => {
+        const offset = 8 + index * 12
+        return { firstChunk: data.readUInt32BE(offset), samplesPerChunk: data.readUInt32BE(offset + 4) }
+    })
 }
 
 const parseIvs = (data) => {
     const count = data.readUInt32BE(4)
+    if (count > 200000 || 8 + count * 8 > data.length) throw new Error('汽水音频 senc 数据不完整')
     return Array.from({ length: count }, (_, index) => {
         const iv = Buffer.alloc(16)
         data.copy(iv, 0, 8 + index * 8, 16 + index * 8)
@@ -71,6 +92,86 @@ const flacMetadata = (stsd) => {
     return stsd.data.subarray(index + 8, end)
 }
 
+const samplesPerChunk = (chunk, entries) => {
+    for (let index = 0; index < entries.length; index += 1) {
+        const current = entries[index]
+        const next = entries[index + 1]
+        if (chunk >= current.firstChunk && (!next || chunk < next.firstChunk)) return current.samplesPerChunk
+    }
+    return 0
+}
+
+const rebuildChunkOffsets = (sampleSizes, entries, chunkCount, mdatOffset) => {
+    const offsets = []
+    let sampleIndex = 0
+    let offset = mdatOffset
+    for (let chunk = 1; chunk <= chunkCount; chunk += 1) {
+        offsets.push(offset)
+        const count = samplesPerChunk(chunk, entries)
+        for (let index = 0; index < count && sampleIndex < sampleSizes.length; index += 1) {
+            offset += sampleSizes[sampleIndex]
+            sampleIndex += 1
+        }
+    }
+    return offsets
+}
+
+const rewriteStco = (data, offsets) => {
+    const count = data.readUInt32BE(4)
+    if (count > offsets.length) throw new Error('汽水音频 chunk 偏移不足')
+    const output = Buffer.alloc(8 + count * 4)
+    data.copy(output, 0, 0, 8)
+    offsets.slice(0, count).forEach((offset, index) => output.writeUInt32BE(offset, 8 + index * 4))
+    return output
+}
+
+const cleanBoxChildren = (source, start, end, context) => {
+    const parts = []
+    let offset = start
+    while (offset < end) {
+        if (offset + 8 > end) {
+            parts.push(source.subarray(offset, end))
+            break
+        }
+        const size = source.readUInt32BE(offset)
+        if (size < 8 || offset + size > end) {
+            parts.push(source.subarray(offset, end))
+            break
+        }
+        const type = source.subarray(offset + 4, offset + 8).toString('ascii')
+        const child = { offset, size, data: source.subarray(offset + 8, offset + size) }
+        if (encryptedBoxTypes.has(type)) {
+            offset += size
+            continue
+        }
+        if (type === 'enca') {
+            // AudioSampleEntry 有 28 字节固定头，真正的子 box 从其后开始。
+            const fixedHeaderEnd = Math.min(offset + size, offset + 36)
+            const fixedHeader = source.subarray(offset + 8, fixedHeaderEnd)
+            const inner = cleanBoxChildren(source, fixedHeaderEnd, offset + size, context)
+            parts.push(writeUInt32BE(fixedHeader.length + inner.length + 8), Buffer.from('mp4a'), fixedHeader, inner)
+        } else if (type === 'stco') {
+            const body = rewriteStco(child.data, rebuildChunkOffsets(
+                context.sampleSizes, context.sampleToChunk, context.chunkCount, context.mdatOffset,
+            ))
+            parts.push(writeUInt32BE(body.length + 8), Buffer.from('stco'), body)
+        } else if (containerBoxTypes.has(type)) {
+            // stsd 前 8 字节为 FullBox 版本和 entry_count，不是 MP4 子 box。
+            const fixedHeaderSize = type === 'stsd' ? 8 : 0
+            const fixedHeaderEnd = Math.min(offset + size, offset + 8 + fixedHeaderSize)
+            const fixedHeader = source.subarray(offset + 8, fixedHeaderEnd)
+            const inner = cleanBoxChildren(source, fixedHeaderEnd, offset + size, context)
+            parts.push(writeUInt32BE(fixedHeader.length + inner.length + 8), Buffer.from(type), fixedHeader, inner)
+        } else {
+            parts.push(source.subarray(offset, offset + size))
+        }
+        offset += size
+    }
+    return Buffer.concat(parts)
+}
+
+const cleanBoxTree = (source, box, context) => cleanBoxChildren(source, box.offset + 8, box.offset + box.size, context)
+
 export const decryptQishuiAudio = (source, spadeA) => {
     const encrypted = Buffer.isBuffer(source) ? source : Buffer.from(source)
     const keyHex = /^[0-9a-f]+$/i.test(String(spadeA || '')) ? String(spadeA) : decodeSpadeA(spadeA)
@@ -84,34 +185,52 @@ export const decryptQishuiAudio = (source, spadeA) => {
     const stbl = findBox(encrypted, 'stbl', minf.offset + 8, minf.offset + minf.size)
     const stsd = findBox(encrypted, 'stsd', stbl.offset + 8, stbl.offset + stbl.size)
     const stsz = findBox(encrypted, 'stsz', stbl.offset + 8, stbl.offset + stbl.size)
+    const stsc = findBox(encrypted, 'stsc', stbl.offset + 8, stbl.offset + stbl.size)
+    const stco = findBox(encrypted, 'stco', stbl.offset + 8, stbl.offset + stbl.size)
     let senc = findBox(encrypted, 'senc', moov.offset + 8, moov.offset + moov.size)
     if (!senc.size) senc = findBox(encrypted, 'senc', stbl.offset + 8, stbl.offset + stbl.size)
     const mdat = findBox(encrypted, 'mdat')
-    if (![moov, trak, mdia, minf, stbl, stsd, stsz, senc, mdat].every(box => box.size)) {
+    if (![moov, trak, mdia, minf, stbl, stsd, stsz, stsc, stco, senc, mdat].every(box => box.size)) {
         throw new Error('汽水音频容器缺少必要 MP4 box')
     }
 
     const sizes = parseSampleSizes(stsz.data)
+    const sampleToChunk = parseSampleToChunk(stsc.data)
+    const chunkCount = stco.data.readUInt32BE(4)
+    if (chunkCount > 200000 || 8 + chunkCount * 4 > stco.data.length) throw new Error('汽水音频 stco 数据不完整')
+    const sourceChunkOffsets = Array.from({ length: chunkCount }, (_, index) => stco.data.readUInt32BE(8 + index * 4))
     const ivs = parseIvs(senc.data)
-    if (sizes.length !== ivs.length) throw new Error('汽水音频样本与 IV 数量不一致')
+    if (ivs.length < sizes.length) throw new Error('汽水音频样本与 IV 数量不一致')
     const samples = []
-    let offset = mdat.offset + 8
-    for (let index = 0; index < sizes.length; index += 1) {
-        const decipher = crypto.createDecipheriv('aes-128-ctr', key, ivs[index])
-        samples.push(Buffer.concat([decipher.update(encrypted.subarray(offset, offset + sizes[index])), decipher.final()]))
-        offset += sizes[index]
+    let sampleIndex = 0
+    for (let chunk = 1; chunk <= chunkCount && sampleIndex < sizes.length; chunk += 1) {
+        let offset = sourceChunkOffsets[chunk - 1]
+        const count = samplesPerChunk(chunk, sampleToChunk)
+        if (!count) throw new Error('汽水音频 stsc 缺少 chunk 映射')
+        for (let index = 0; index < count && sampleIndex < sizes.length; index += 1) {
+            const size = sizes[sampleIndex]
+            if (offset < 0 || offset + size > encrypted.length) throw new Error('汽水音频样本数据不完整')
+            const decipher = crypto.createDecipheriv('aes-128-ctr', key, ivs[sampleIndex])
+            samples.push(Buffer.concat([decipher.update(encrypted.subarray(offset, offset + size)), decipher.final()]))
+            offset += size
+            sampleIndex += 1
+        }
     }
+    if (sampleIndex !== sizes.length) throw new Error('汽水音频样本数量与 chunk 映射不一致')
 
     const metadata = flacMetadata(stsd)
     if (metadata.length) {
         return { buffer: Buffer.concat([Buffer.from('fLaC'), metadata, ...samples]), contentType: 'audio/flac' }
     }
-    const output = Buffer.from(encrypted)
-    let writeAt = mdat.offset + 8
-    samples.forEach(sample => { sample.copy(output, writeAt); writeAt += sample.length })
-    const marker = output.indexOf(Buffer.from('enca'), stsd.offset)
-    if (marker >= stsd.offset && marker < stsd.offset + stsd.size) Buffer.from('mp4a').copy(output, marker)
-    return { buffer: output, contentType: 'audio/mp4' }
+    const ftyp = findBox(encrypted, 'ftyp')
+    // 移除 CENC 描述后 moov 长度会变化，先测量一次，再按新的 mdat 偏移重建 stco。
+    const draftMoov = cleanBoxTree(encrypted, moov, { sampleSizes: sizes, sampleToChunk, chunkCount, mdatOffset: 0 })
+    const mdatOffset = (ftyp.size || 0) + draftMoov.length + 16
+    const cleanMoovData = cleanBoxTree(encrypted, moov, { sampleSizes: sizes, sampleToChunk, chunkCount, mdatOffset })
+    const cleanMoov = Buffer.concat([writeUInt32BE(cleanMoovData.length + 8), Buffer.from('moov'), cleanMoovData])
+    const cleanMdatData = Buffer.concat(samples)
+    const cleanMdat = Buffer.concat([writeUInt32BE(cleanMdatData.length + 8), Buffer.from('mdat'), cleanMdatData])
+    return { buffer: Buffer.concat([ftyp.size ? encrypted.subarray(ftyp.offset, ftyp.offset + ftyp.size) : Buffer.alloc(0), cleanMoov, cleanMdat]), contentType: 'audio/mp4' }
 }
 
 const cache = new Map()
