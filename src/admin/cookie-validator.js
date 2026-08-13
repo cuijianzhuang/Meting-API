@@ -1,14 +1,18 @@
 import { request } from '../providers/netease/util.js'
 import { changeUrlQuery } from '../providers/tencent/util.js'
+import { getVipLoginInfo } from '../providers/tencent/qr_login.js'
 
 const detectSvip = (...sources) => sources.some((source) => {
     if (!source || typeof source !== 'object') return false
     return source.isSvip === true
         || source.is_svip === true
+        || source.isSuperVip === true
+        || source.is_super_vip === true
         || source.svip === true
         || source.superVip === true
         || source.super_vip === true
         || Number(source.svipType || source.svip_type || source.superVipType || source.super_vip_type) > 0
+        || ['svip', 'supervip'].includes(String(source.vipStage || source.vip_stage || source.vipLevelName || source.vip_level_name || '').toLowerCase().replace(/[ _-]/g, ''))
 })
 import { getQishuiProfile } from '../providers/qishui/index.js'
 
@@ -76,50 +80,21 @@ const checkNeteaseVipAbility = async (cookieString) => {
     }
 }
 
-const checkTencentVipAbility = async (cookieString) => {
+const getTencentMembership = async (cookie) => {
     try {
-        const cookie = parseCookieString(cookieString)
-        const uin = cookie.uin || ''
-        const qqmusic_key = cookie.qqmusic_key || ''
-        const testSongId = '0010BrWk2SucQr'
-        
-        const data = {
-            data: JSON.stringify({
-                comm: {
-                    ct: 19,
-                    cv: 0,
-                    uin: uin,
-                    format: 'json',
-                    authst: qqmusic_key
-                },
-                req_0: {
-                    module: 'vkey.GetVkeyServer',
-                    method: 'CgiGetVkey',
-                    param: {
-                        guid: '0',
-                        songmid: [testSongId],
-                        songtype: [0],
-                        uin: uin,
-                        loginflag: 1,
-                        platform: '20'
-                    }
-                }
-            })
-        }
-
-        const url = changeUrlQuery(data, 'https://u.y.qq.com/cgi-bin/musicu.fcg')
-        const res = await fetch(url)
-        const result = await res.json()
-        
-        if (result.req_0 && result.req_0.data && result.req_0.data.midurlinfo) {
-            const purl = result.req_0.data.midurlinfo[0]?.purl
-            if (purl && purl.length > 0 && !purl.includes('try')) {
-                return true
-            }
-        }
-        return false
-    } catch (e) {
-        return false
+        const { code, data } = await getVipLoginInfo({
+            uin: cookie.uin || '',
+            musickey: cookie.qqmusic_key || cookie.qm_keyst || '',
+            loginType: cookie.tmeLoginType || cookie.login_type || 2,
+            deviceCookie: cookie.psrf_qqdevice || '',
+        })
+        if (code !== 0) return null
+        const identity = data.identity || data.Identity || {}
+        const isSvip = Number(data.svip || data.SVip) > 0 || Number(identity.HugeVip || identity.hugeVip || identity.huge_vip) > 0
+        const isVip = isSvip || Number(identity.vip || identity.Vip) > 0
+        return { isVip, isSvip, vipType: isSvip ? 2 : isVip ? 1 : 0 }
+    } catch {
+        return null
     }
 }
 
@@ -221,6 +196,7 @@ export const validateTencentCookie = async (cookieString) => {
         const uin = cookie.uin || ''
         const qqmusic_key = cookie.qqmusic_key || ''
 
+        const membership = await getTencentMembership(cookie)
         const data = {
             data: JSON.stringify({
                 comm: {
@@ -239,18 +215,20 @@ export const validateTencentCookie = async (cookieString) => {
         }
 
         const url = changeUrlQuery(data, 'https://u.y.qq.com/cgi-bin/musicu.fcg')
-        const res = await fetch(url)
+        const res = await fetch(url, {
+            headers: {
+                Referer: 'https://y.qq.com/',
+                'User-Agent': 'Mozilla/5.0',
+                Cookie: cookieString,
+            },
+        })
         const result = await res.json()
 
         if (result.req_0 && result.req_0.code === 0) {
             const userInfo = result.req_0.data
-            const isVip = (userInfo?.vip || 0) > 0
-            const isSvip = detectSvip(userInfo)
-            let canPlayVip = isVip
-            
-            if (!isVip) {
-                canPlayVip = await checkTencentVipAbility(cookieString)
-            }
+            const detectedSvip = detectSvip(userInfo, userInfo?.vipInfo, userInfo?.vip_info, userInfo?.memberInfo, userInfo?.member_info)
+            const isSvip = membership?.isSvip || detectedSvip
+            const isVip = membership?.isVip || (userInfo?.vip || 0) > 0 || isSvip
             
             return {
                 valid: true,
@@ -259,12 +237,27 @@ export const validateTencentCookie = async (cookieString) => {
                     userId: userInfo?.uin || uin,
                     nickname: userInfo?.nick || 'QQ用户',
                     avatarUrl: userInfo?.headpic || '',
-                    vipType: userInfo?.vip || 0,
+                    vipType: membership?.vipType || userInfo?.vip || 0,
                     isVip: isVip,
                     isSvip,
                     canPlaySvip: isSvip,
-                    canPlayVip: canPlayVip
+                    canPlayVip: isVip
                 }
+            }
+        } else if (membership) {
+            return {
+                valid: true,
+                error: null,
+                userInfo: {
+                    userId: uin,
+                    nickname: 'QQ用户',
+                    avatarUrl: '',
+                    vipType: membership.vipType,
+                    isVip: membership.isVip,
+                    isSvip: membership.isSvip,
+                    canPlaySvip: membership.isSvip,
+                    canPlayVip: membership.isVip,
+                },
             }
         } else if (result.req_0 && result.req_0.code === 1000) {
             return {
@@ -273,8 +266,6 @@ export const validateTencentCookie = async (cookieString) => {
                 userInfo: null
             }
         } else {
-            const canPlayVip = await checkTencentVipAbility(cookieString)
-            
             return {
                 valid: true,
                 error: null,
@@ -284,7 +275,9 @@ export const validateTencentCookie = async (cookieString) => {
                     avatarUrl: '',
                     vipType: 0,
                     isVip: false,
-                    canPlayVip: canPlayVip
+                    isSvip: false,
+                    canPlaySvip: false,
+                    canPlayVip: false
                 }
             }
         }

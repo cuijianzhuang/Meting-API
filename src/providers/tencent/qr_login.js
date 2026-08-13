@@ -275,6 +275,43 @@ export const postLoginServer = async ({ method, param, comm: commOverrides = {},
     return { code, data, raw: result }
 }
 
+/**
+ * 查询当前扫码登录账号的 QQ 音乐会员身份。
+ * 必须复用扫码时保存的设备档案，否则 QQ 可能拒绝返回会员信息。
+ */
+export const getVipLoginInfo = async ({ uin, musickey, loginType, deviceCookie = '' }) => {
+    const persistedDevice = decodeLoginDevice(deviceCookie)
+    const comm = await buildAndroidComm({
+        uin: String(uin || ''),
+        authst: musickey || '',
+        tmeLoginType: Number(loginType) || 2,
+    }, persistedDevice)
+    const response = await fetchWithTimeout('https://u.y.qq.com/cgi-bin/musicu.fcg', {
+        method: 'POST',
+        body: JSON.stringify({
+            comm,
+            req_0: {
+                module: 'VipLogin.VipLoginInter',
+                method: 'vip_login_base',
+                param: {},
+            },
+        }),
+        headers: {
+            'User-Agent': QQ_MUSIC_UA,
+            'Content-Type': 'application/json',
+        },
+    })
+    if (!response.ok) {
+        throw new Error(`QQ 音乐会员接口请求失败 (${response.status})`)
+    }
+    const result = await response.json()
+    const payload = result?.req_0 || {}
+    return {
+        code: Number(payload.code ?? result?.code ?? -1),
+        data: payload.data || {},
+    }
+}
+
 const postMusicApi = async (method, param, comm) => {
     const { data } = await postLoginServer({ method, param, comm, allowErrorCodes: false })
     return data
