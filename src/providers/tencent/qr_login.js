@@ -49,6 +49,29 @@ const createDevice = () => {
 
 const mobileDevice = createDevice()
 
+const QQ_DEVICE_COOKIE_FIELD = 'psrf_qqdevice'
+
+const encodeLoginDevice = (device, qimei) => Buffer.from(JSON.stringify({
+    q16: qimei?.q16 || '',
+    q36: qimei?.q36 || '',
+    guid: device.guid || '',
+    androidId: device.androidId || '',
+    release: device.release || '',
+    sdk: device.sdk || '',
+    model: device.model || '',
+    fingerprint: device.fingerprint || '',
+}), 'utf8').toString('base64url')
+
+const decodeLoginDevice = (value) => {
+    try {
+        const data = JSON.parse(Buffer.from(String(value || ''), 'base64url').toString('utf8'))
+        if (!data?.q16 || !data?.q36 || !data?.guid || !data?.androidId) return null
+        return data
+    } catch {
+        return null
+    }
+}
+
 const PART_1_INDEXES = [23, 14, 6, 36, 16, 7, 19]
 const PART_2_INDEXES = [16, 1, 32, 12, 19, 27, 8, 5]
 const SCRAMBLE_VALUES = [
@@ -178,8 +201,16 @@ const getQimei = async () => {
     return mobileDevice.qimei
 }
 
-const buildAndroidComm = async (overrides = {}) => {
-    const qimei = await getQimei()
+const buildAndroidComm = async (overrides = {}, persistedDevice = null) => {
+    const qimei = persistedDevice
+        ? { q16: persistedDevice.q16, q36: persistedDevice.q36 }
+        : await getQimei()
+    const guid = persistedDevice?.guid || mobileDevice.guid
+    const androidId = persistedDevice?.androidId || mobileDevice.androidId
+    const release = persistedDevice?.release || mobileDevice.release
+    const sdk = persistedDevice?.sdk || mobileDevice.sdk
+    const model = persistedDevice?.model || mobileDevice.model
+    const fingerprint = persistedDevice?.fingerprint || mobileDevice.fingerprint
     return {
         ct: MOBILE_CT,
         cv: MOBILE_CV,
@@ -188,17 +219,17 @@ const buildAndroidComm = async (overrides = {}) => {
         tmeAppID: 'qqmusic',
         QIMEI: qimei.q16,
         QIMEI36: qimei.q36,
-        OpenUDID: mobileDevice.guid,
-        udid: mobileDevice.guid,
-        OpenUDID2: mobileDevice.guid,
+        OpenUDID: guid,
+        udid: guid,
+        OpenUDID2: guid,
         uid: mobileDevice.uid,
         sid: mobileDevice.sid,
-        aid: mobileDevice.androidId,
-        os_ver: mobileDevice.release,
-        phonetype: mobileDevice.model,
-        devicelevel: mobileDevice.sdk,
-        newdevicelevel: mobileDevice.sdk,
-        rom: mobileDevice.fingerprint,
+        aid: androidId,
+        os_ver: release,
+        phonetype: model,
+        devicelevel: sdk,
+        newdevicelevel: sdk,
+        rom: fingerprint,
         ...overrides,
     }
 }
@@ -208,8 +239,9 @@ const buildAndroidComm = async (overrides = {}) => {
  * @param {{ method: string, param: object, comm?: object, allowErrorCodes?: boolean }} options
  * @returns {Promise<{ code: number, data: object, raw: object }>}
  */
-export const postLoginServer = async ({ method, param, comm: commOverrides = {}, allowErrorCodes = false }) => {
-    const comm = await buildAndroidComm(commOverrides)
+export const postLoginServer = async ({ method, param, comm: commOverrides = {}, allowErrorCodes = false, deviceCookie = '' }) => {
+    const persistedDevice = decodeLoginDevice(deviceCookie)
+    const comm = await buildAndroidComm(commOverrides, persistedDevice)
     const body = JSON.stringify({
         comm,
         req_0: {
@@ -374,6 +406,8 @@ const buildCookie = (data) => {
         psrf_qqopenid: data.openid || '',
         psrf_access_token_expiresAt: data.expired_at || '',
         psrf_musickey_createtime: data.musickeyCreateTime || '',
+        // 续期必须复用本次扫码登录的设备指纹，否则 QQ 会把每次刷新视为新设备。
+        [QQ_DEVICE_COOKIE_FIELD]: encodeLoginDevice(mobileDevice, mobileDevice.qimei),
     }
     return {
         uin,

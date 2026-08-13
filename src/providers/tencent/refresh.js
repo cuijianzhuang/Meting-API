@@ -179,6 +179,7 @@ const callRefreshLogin = async (cookie) => {
             uin: musicid,
         },
         allowErrorCodes: true,
+        deviceCookie: cookie.psrf_qqdevice || '',
     })
 
     console.log(

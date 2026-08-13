@@ -232,6 +232,7 @@ class CookieMonitor {
                     unionid: cookieObj.unionid || '',
                     str_musicid: cookieObj.str_musicid || '',
                     psrf_access_token_expiresAt: cookieObj.psrf_access_token_expiresAt || '',
+                    psrf_qqdevice: cookieObj.psrf_qqdevice || '',
                 })
                 if (fallback?.success) refreshResult = fallback
             }
