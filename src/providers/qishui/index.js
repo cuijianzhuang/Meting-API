@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { preloadQishuiAudio } from './audio.js'
-import { generateQishuiSignatureHeaders } from './signature.js'
+import { generateQishuiSignatureHeaders, isQishuiRemoteSignerConfigured } from './signature.js'
 
 const PUBLIC_SEARCH = 'https://api-vehicle.volcengine.com/v2/search/type'
 const PUBLIC_DETAIL = 'https://api-vehicle.volcengine.com/v2/custom/contents'
@@ -653,7 +653,7 @@ const get_media_player_song_url = async (id, cookie, options = {}) => {
 
 const get_song_url = async (id, cookie, options = {}) => {
     // 汽水取链需要 X-Medusa、X-Helios，使用手机端接口替代。
-    if (!text(cookie)) return null
+    if (!text(cookie) || !isQishuiRemoteSignerConfigured(options.signerUrl)) return null
     try {
         const stream = await get_pc_song_url(id, cookie, options)
         if (stream?.url && stream?.auth) {
