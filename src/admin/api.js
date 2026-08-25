@@ -484,6 +484,11 @@ export const adminRoutes = (app) => {
         return c.json({ success: true, data: config })
     })
 
+    app.put('/admin/config/qishui-signer', authMiddleware, adminMiddleware, async (c) => {
+        const body = await c.req.json()
+        const result = await store.setQishuiSignerUrl(body?.url, c.get('username'))
+        return c.json(result, result.success ? 200 : 400)
+    })
     app.put('/admin/config/admin-path', authMiddleware, adminMiddleware, async (c) => {
         const body = await c.req.json()
         const { adminPath } = body

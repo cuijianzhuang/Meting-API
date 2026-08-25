@@ -963,10 +963,23 @@ class DataStore {
             adminPath: this.config.adminPath || null,
             webhookUrl: this.config.webhookUrl || null,
             monitorEnabled: this.config.monitorEnabled || false,
-            monitorInterval: this.config.monitorInterval || 60
+            monitorInterval: this.config.monitorInterval || 60,
+            qishuiSignerUrl: this.config.qishuiSignerUrl || null
         }
     }
 
+    getQishuiSignerUrl() {
+        return this.config.qishuiSignerUrl || ''
+    }
+
+    async setQishuiSignerUrl(url, operator = 'system') {
+        const value = String(url || '').trim().replace(/\/+$/, '')
+        if (value && !/^https?:\/\//i.test(value)) return { success: false, error: '签名接口地址必须是 http 或 https URL' }
+        this.config.qishuiSignerUrl = value || null
+        await this.addLog('config_update', `更新汽水签名接口地址: ${value || '已清空'}`, operator)
+        await this.saveToFile()
+        return { success: true, data: { qishuiSignerUrl: value || null } }
+    }
     getWebhookConfig() {
         return {
             url: this.config.webhookUrl || null,

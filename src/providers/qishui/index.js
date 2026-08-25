@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { preloadQishuiAudio } from './audio.js'
+import { generateQishuiSignatureHeaders } from './signature.js'
 
 const PUBLIC_SEARCH = 'https://api-vehicle.volcengine.com/v2/search/type'
 const PUBLIC_DETAIL = 'https://api-vehicle.volcengine.com/v2/custom/contents'
@@ -118,7 +119,7 @@ const printRawRequest = (request, label) => {
 }
 
 const requestJson = async (url, {
-    cookie = '', method = 'GET', body, timeout = 10000, headers: extraHeaders = {}, debugRaw = false, debugLabel = 'track_v2',
+    cookie = '', method = 'GET', body, timeout = 10000, headers: extraHeaders = {}, signatureDeviceId = '', signatureUrl = '', debugRaw = false, debugLabel = 'track_v2',
 } = {}) => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeout)
@@ -137,6 +138,9 @@ const requestJson = async (url, {
                 ...(bodyText ? { 'X-SS-STUB': createHash('md5').update(bodyText).digest('hex').toUpperCase() } : {}),
                 ...(cookie ? { Cookie: normalizeCookie(cookie) } : {}),
                 ...extraHeaders,
+        }
+        if (signatureDeviceId) {
+            Object.assign(headers, await generateQishuiSignatureHeaders({ url, headers, deviceId: signatureDeviceId, signerUrl: signatureUrl }))
         }
         if (debugRaw) printRawRequest({ method, url, headers, bodyText }, debugLabel)
         let response
@@ -584,41 +588,41 @@ const selectSongStream = (streams, options = {}) => {
     }
 }
 
-// 保留 PC track_v2 实现仅用于后续抓包对照；汽水取链需要 X-Medusa、X-Helios，
-// 当前不携带这两个签名头时改用手机端 media-player 接口。
-/*
 const get_pc_song_url = async (id, cookie, options = {}) => {
-    const queueType = text(options.queueType) || 'daily_mix'
-    const sceneName = text(options.sceneName) || 'track_reco'
-    const json = await requestJson(urlWithParams(`${PC_API}/luna/pc/track_v2`, streamPcParams(), { includeEmpty: true }), {
+    const queueType = text(options.queueType) || 'favorite_track_playlist'
+    const sceneName = text(options.sceneName) || 'library'
+    const url = urlWithParams(`${PC_API}/luna/pc/track_v2`, streamPcParams(), { includeEmpty: true })
+    const body = {
+        track_id: id,
+        media_type: 'track',
+        queue_type: queueType,
+        scene_name: sceneName,
+    }
+    const json = await requestJson(url, {
         cookie,
+        method: 'POST',
+        body,
+        signatureDeviceId: PC_DEVICE_ID,
         headers: {
             'User-Agent': STREAM_WEB_UA,
-            'x-luna-background-type': 'blur',
-            'x-luna-is-background-req': '1',
-        },
-        method: 'POST',
-        body: {
-            media_type: 'track',
-            queue_type: queueType,
-            scene_name: sceneName,
-            track_id: id,
         },
         timeout: 12000,
         debugRaw: true,
+        debugLabel: 'track_v2',
     })
     console.log('[Qishui] track_v2 平台响应', JSON.stringify({
         id: text(id),
         requestedQuality: text(options.quality) || 'standard',
+        queueType,
+        sceneName,
         statusCode: json?.status_code,
         statusMessage: json?.status_info?.status_msg,
+        riskResult: json?.risk_result,
         hasTrackPlayer: Boolean(json?.track_player),
         hasVideoModel: Boolean(json?.track_player?.video_model),
     }))
     return selectSongStream(collectStreams(json), options)
 }
-*/
-
 const get_media_player_song_url = async (id, cookie, options = {}) => {
     const json = await requestJson(urlWithParams(`${LUNA_API}/luna/media-player`, mediaPlayerAndroidParams(), { includeEmpty: true }), {
         cookie,
@@ -651,7 +655,7 @@ const get_song_url = async (id, cookie, options = {}) => {
     // 汽水取链需要 X-Medusa、X-Helios，使用手机端接口替代。
     if (!text(cookie)) return null
     try {
-        const stream = await get_media_player_song_url(id, cookie, options)
+        const stream = await get_pc_song_url(id, cookie, options)
         if (stream?.url && stream?.auth) {
             preloadQishuiAudio(stream.url, stream.auth)
         }

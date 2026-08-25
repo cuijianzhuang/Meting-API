@@ -892,7 +892,18 @@ const getAdminHtml = () => `<!DOCTYPE html>
                         </form>
                     </div>
 
-                    <div class="card">
+                                        <div class="card">
+                        <div class="card-header"><span class="card-title">汽水音乐签名服务</span></div>
+                        <form id="qishuiSignerForm" style="max-width: 600px;">
+                            <div class="form-group">
+                                <label>签名接口地址</label>
+                                <input type="url" id="qishuiSignerUrl" placeholder="http://qishui-signer:8080/sign">
+                                <small>填写独立 qishui-signer 容器的 /sign 地址；留空则使用本地签名模式。</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">保存签名地址</button>
+                        </form>
+                    </div>
+<div class="card">
                         <div class="card-header"><span class="card-title">Webhook通知设置</span></div>
                         <form id="webhookForm" style="max-width: 600px;">
                             <div class="form-group">
@@ -1548,6 +1559,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
                 document.getElementById('monitorInterval').textContent = configRes.data.interval;
                 document.getElementById('monitorIntervalInput').value = configRes.data.interval;
             }
+            if (configRes?.success) { document.getElementById('qishuiSignerUrl').value = configRes.data.qishuiSignerUrl || ''; }
             if (webhookRes?.success) {
                 document.getElementById('webhookEnabled').checked = webhookRes.data.enabled;
                 document.getElementById('webhookUrl').value = webhookRes.data.url || '';
@@ -1800,6 +1812,13 @@ const getAdminHtml = () => `<!DOCTYPE html>
             else showToast(res?.error || '保存失败', 'error');
         });
 
+        document.getElementById('qishuiSignerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const url = document.getElementById('qishuiSignerUrl').value.trim();
+            const res = await api('/admin/config/qishui-signer', { method: 'PUT', body: JSON.stringify({ url }) });
+            if (res?.success) showToast('汽水签名地址已保存');
+            else showToast(res?.error || '保存失败', 'error');
+        });
         document.getElementById('monitorForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const enabled = document.getElementById('monitorEnabled').checked;

@@ -30,7 +30,7 @@ export default async (ctx) => {
         cookie = storedCookie.cookie
     }
 
-    let data = await p.get(server).handle(type, id, cookie, { quality })
+    let data = await p.get(server).handle(type, id, cookie, { quality, signerUrl: server === 'qishui' ? store.getQishuiSignerUrl() : '' })
 
     if (type === 'url') {
         // 兼容旧返回：纯字符串 URL
