@@ -3,6 +3,7 @@ import { format as lyricFormat, get_url } from "../util.js"
 import { wrapQishuiPlayPayload } from "../providers/qishui/audio.js"
 import store from "../admin/store.js"
 import { isValidQuality, getQualityName, buildUrlPayload } from "../quality.js"
+import { resolveQishuiSignerUrl } from './qishui-signer-config.js'
 export default async (ctx) => {
 
     const p = new Providers()
@@ -30,7 +31,14 @@ export default async (ctx) => {
         cookie = storedCookie.cookie
     }
 
-    let data = await p.get(server).handle(type, id, cookie, { quality, signerUrl: server === 'qishui' ? store.getQishuiSignerUrl() : '' })
+    const signerUrl = server === 'qishui' ? resolveQishuiSignerUrl(store.getQishuiSignerUrl()) : ''
+    if (server === 'qishui' && type === 'url') {
+        console.log('[Meting] qishui signer config', JSON.stringify({
+            configured: Boolean(signerUrl),
+            source: store.getQishuiSignerUrl() ? 'admin' : (process.env.QISHUI_SIGNER_URL ? 'env' : 'none'),
+        }))
+    }
+    let data = await p.get(server).handle(type, id, cookie, { quality, signerUrl })
 
     if (type === 'url') {
         // 兼容旧返回：纯字符串 URL

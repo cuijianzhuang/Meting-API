@@ -1,7 +1,7 @@
 /**
  * 首页 / API 文档页
  */
-export const renderHomepage = ({ baseUrl, runtime, port, overseas, version = '3.1.3' }) => `<!DOCTYPE html>
+export const renderHomepage = ({ baseUrl, runtime, port, overseas, version = '3.2.0' }) => `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">

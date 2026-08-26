@@ -2,7 +2,7 @@
 
 多平台音乐 API · 网易云 / QQ / 汽水 · Cookie 管理 · 会员音质 · 私人漫游
 
-**v3.1.3** · Node ≥ 18 · [Docker](https://hub.docker.com/r/w3126197382/meting-api) · MIT
+**v3.2.0** · Node ≥ 18 · [Docker](https://hub.docker.com/r/w3126197382/meting-api) · MIT
 
 ---
 

@@ -1382,8 +1382,11 @@ const getAdminHtml = () => `<!DOCTYPE html>
                 }
             }
             const res = await api('/admin/config');
-            if (res?.success && res.data?.adminPath) {
-                document.getElementById('adminPathInput').value = res.data.adminPath;
+            if (res?.success) {
+                if (res.data?.adminPath) {
+                    document.getElementById('adminPathInput').value = res.data.adminPath;
+                }
+                document.getElementById('qishuiSignerUrl').value = res.data?.qishuiSignerUrl || '';
             }
         };
 
@@ -1559,7 +1562,6 @@ const getAdminHtml = () => `<!DOCTYPE html>
                 document.getElementById('monitorInterval').textContent = configRes.data.interval;
                 document.getElementById('monitorIntervalInput').value = configRes.data.interval;
             }
-            if (configRes?.success) { document.getElementById('qishuiSignerUrl').value = configRes.data.qishuiSignerUrl || ''; }
             if (webhookRes?.success) {
                 document.getElementById('webhookEnabled').checked = webhookRes.data.enabled;
                 document.getElementById('webhookUrl').value = webhookRes.data.url || '';
