@@ -12,7 +12,7 @@ import { customAlphabet } from 'nanoid/non-secure'
 const nanoid = customAlphabet('1234567890abcdef', 32)
 
 const UA =
-    'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/3.1.20.203753'
+    'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/3.1.30.203753'
 
 /** key -> { phase: 'waiting'|'scanned'|'confirmed'|'expired', result?, inflight? } */
 const neteaseQrSessions = new Map()
@@ -50,7 +50,7 @@ const createSessionCookies = () => [
     `_ntes_nuid=${nanoid()}`,
     `NMTID=${nanoid()}`,
     'os=pc',
-    'appver=3.1.20.203753',
+    'appver=3.1.30.203753',
     `MUSIC_A=${net_ease_anonymous_token}`,
 ]
 
