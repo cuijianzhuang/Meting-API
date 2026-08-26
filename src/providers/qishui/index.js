@@ -603,6 +603,7 @@ const get_pc_song_url = async (id, cookie, options = {}) => {
         method: 'POST',
         body,
         signatureDeviceId: PC_DEVICE_ID,
+        signatureUrl: options.signerUrl,
         headers: {
             'User-Agent': STREAM_WEB_UA,
         },
