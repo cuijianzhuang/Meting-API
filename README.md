@@ -124,29 +124,6 @@ GET /api?server=kugou&type=pic&id=72db6da75ffe23a3a6361bdb8f44d5f4
   var meting_api = 'https://你的域名/api?server=:server&type=:type&id=:id&auth=:auth&r=:r&redirect=1'
 </script>
 ```
----
-
-## 部署
-
-| 场景 | 网易 | QQ（国内访问） | QQ（海外访问） |
-|------|:---:|:---:|:---:|
-| 服务在国内 | ✅ | ✅ | ❌ |
-| 服务在海外 | ✅ | ✅¹ | ❌ |
-
-¹ 海外服务端需 `OVERSEAS=1`（Vercel / Cloudflare 自动开启），并用上方 MetingJS fork。
-
-| 变量 | 默认 | 说明 |
-|------|------|------|
-| `PORT` | `3000` | 端口 |
-| `OVERSEAS` | `false` | 海外模式 |
-| `ADMIN_PATH` | `admin` | 后台路径 |
-| `DATA_DIR` | `./data` | 数据目录 |
-| `METING_COOKIE_ENCRYPTION_KEY` | 自动 | Cookie 加密密钥，配置后勿随意更换 |
-
-> Vercel / Cloudflare Workers **无管理后台**（无本地文件系统），仅提供基础 API。
-
----
-
 ## 管理后台
 
 `/{ADMIN_PATH}` · Cookie 增删验证 · QQ 自动续期 · 汽水扫码 · 定时监测 · Webhook · 2FA · 多用户
@@ -173,9 +150,4 @@ GET /api?server=kugou&type=pic&id=72db6da75ffe23a3a6361bdb8f44d5f4
 **忘了后台路径？** 看 `DATA_DIR/config.json` 的 `adminPath`，或设 `ADMIN_PATH`。
 
 ---
-
-## 相关
-
-[MetingJS](https://github.com/xizeyoupan/MetingJS) · [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) · [QQMusicApi](https://github.com/L-1124/QQMusicApi)
-
 License: MIT
