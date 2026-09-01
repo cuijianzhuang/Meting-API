@@ -15,6 +15,7 @@ const detectSvip = (...sources) => sources.some((source) => {
         || ['svip', 'supervip'].includes(String(source.vipStage || source.vip_stage || source.vipLevelName || source.vip_level_name || '').toLowerCase().replace(/[ _-]/g, ''))
 })
 import { getQishuiProfile } from '../providers/qishui/index.js'
+import { isKugouMembershipRequestParamError, mapKugouMembership, parseKugouCookie, requestKugou } from '../providers/kugou/index.js'
 
 const parseCookieString = (cookieString) => {
     if (!cookieString) return {}
@@ -291,6 +292,60 @@ export const validateTencentCookie = async (cookieString) => {
 }
 
 export const validateQishuiCookie = async (cookieString) => getQishuiProfile(cookieString)
+export const validateKugouCookie = async (cookieString) => {
+    const cookie = parseKugouCookie(cookieString)
+    if (!cookie.token || !cookie.userid) {
+        return {
+            valid: false,
+            error: '酷狗音乐 Cookie 需要同时包含 token 和 userid，才能在线验证会员权益',
+            userInfo: null,
+        }
+    }
+
+    try {
+        const result = await requestKugou('/v1/get_union_vip', {
+            base: 'https://kugouvip.kugou.com',
+            params: { busi_type: 'concept', opt_product_types: 'dvip,qvip', product_type: 'svip' },
+            cookie: { ...cookie, __raw: cookieString },
+        })
+        if (Number(result?.status) === 0 || Number(result?.error_code) !== 0 && result?.error_code !== undefined) {
+            return { valid: false, error: result?.error || result?.msg || '酷狗 Cookie 已过期或无效', userInfo: null }
+        }
+
+        const membership = mapKugouMembership(result, cookie)
+        const profile = result?.data?.user || result?.data?.userinfo || result?.data || result || {}
+        return {
+            valid: true,
+            error: null,
+            userInfo: {
+                userId: profile.userid || profile.user_id || cookie.userid,
+                nickname: profile.nickname || profile.nick_name || '酷狗用户',
+                avatarUrl: profile.avatar || profile.avatar_url || profile.headimg || '',
+                ...membership,
+            },
+        }
+    } catch (error) {
+        if (isKugouMembershipRequestParamError(error)) {
+            const vipType = Number(cookie.vip_type || 0)
+            return {
+                valid: true,
+                error: null,
+                userInfo: {
+                    userId: cookie.userid,
+                    nickname: '酷狗扫码用户',
+                    avatarUrl: '',
+                    vipType,
+                    isVip: vipType > 0,
+                    isSvip: false,
+                    canPlayVip: vipType > 0,
+                    canPlaySvip: false,
+                    membershipPending: true,
+                },
+            }
+        }
+        return { valid: false, error: `验证出错: ${error.message}`, userInfo: null }
+    }
+}
 
 export const validateCookie = async (platform, cookieString) => {
     if (platform === 'netease') {
@@ -299,6 +354,8 @@ export const validateCookie = async (platform, cookieString) => {
         return await validateTencentCookie(cookieString)
     } else if (platform === 'qishui') {
         return await validateQishuiCookie(cookieString)
+    } else if (platform === 'kugou') {
+        return await validateKugouCookie(cookieString)
     } else {
         return {
             valid: false,
@@ -313,4 +370,5 @@ export default {
     validateNeteaseCookie,
     validateTencentCookie,
     validateQishuiCookie,
+    validateKugouCookie,
 }

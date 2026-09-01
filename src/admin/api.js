@@ -5,6 +5,7 @@ import cookieMonitor from './cookie-monitor.js'
 import { createQishuiQr, checkQishuiQr, completeQishuiSecondVerify, getQishuiSecondVerifyAsset, requestQishuiSecondVerify } from '../providers/qishui/qr.js'
 import { createNeteaseQrSession, checkNeteaseQrSession } from '../providers/netease/qr_login.js'
 import { createTencentQrSession, checkTencentQrSession } from '../providers/tencent/qr_login.js'
+import { createKugouQrSession, checkKugouQrSession } from '../providers/kugou/qr_login.js'
 import Providers from '../providers/index.js'
 import { get_url } from '../util.js'
 import { wrapQishuiPlayPayload } from '../providers/qishui/audio.js'
@@ -192,7 +193,8 @@ export const adminRoutes = (app) => {
         try {
             const data = platform === 'qishui' ? await createQishuiQr()
                 : platform === 'netease' ? await createNeteaseQrSession()
-                    : platform === 'tencent' ? await createTencentQrSession() : null
+                    : platform === 'tencent' ? await createTencentQrSession()
+                        : platform === 'kugou' ? await createKugouQrSession() : null
             if (!data) return c.json({ success: false, error: '不支持的扫码平台' }, 400)
             return c.json({ success: true, data })
         } catch (error) {
@@ -250,7 +252,8 @@ export const adminRoutes = (app) => {
         try {
             const data = platform === 'qishui' ? await checkQishuiQr(body.key || body.token)
                 : platform === 'netease' ? await checkNeteaseQrSession(body.key || body.token)
-                    : platform === 'tencent' ? await checkTencentQrSession({ qrsig: body.qrsig || body.key }) : null
+                    : platform === 'tencent' ? await checkTencentQrSession({ qrsig: body.qrsig || body.key })
+                        : platform === 'kugou' ? await checkKugouQrSession(body.key || body.token) : null
             if (!data) return c.json({ success: false, error: '不支持的扫码平台' }, 400)
             return c.json({ success: true, data })
         } catch (error) {
@@ -293,7 +296,7 @@ export const adminRoutes = (app) => {
         const cookie = String(body.cookie || '').trim()
         const mode = String(body.mode || '').trim()
         const excludeIds = new Set(Array.isArray(body.excludeIds) ? body.excludeIds.map((id) => String(id).trim()).filter(Boolean) : [])
-        if (!['netease', 'tencent', 'qishui'].includes(platform) || !cookie) {
+        if (!['netease', 'tencent', 'qishui', 'kugou'].includes(platform) || !cookie) {
             return c.json({ success: false, error: '漫游平台或登录凭证无效' }, 400)
         }
         const provider = new Providers().get(platform)
@@ -321,7 +324,7 @@ export const adminRoutes = (app) => {
         const platform = String(body.platform || '').trim().toLowerCase()
         const cookie = String(body.cookie || '').trim()
         const provider = String(body.providerName || body.provider || '').trim().slice(0, 40)
-        if (!['netease', 'tencent', 'qishui'].includes(platform) || !cookie) {
+        if (!['netease', 'tencent', 'qishui', 'kugou'].includes(platform) || !cookie) {
             return c.json({ success: false, error: '平台或 Cookie 无效' }, 400)
         }
         const validation = await validateCookie(platform, cookie)

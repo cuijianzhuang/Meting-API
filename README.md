@@ -1,8 +1,8 @@
 # Meting-API
 
-多平台音乐 API · 网易云 / QQ / 汽水 · Cookie 管理 · 会员音质 · 私人漫游
+多平台音乐 API · 网易云 / QQ / 汽水 / 酷狗 · Cookie 管理 · 会员音质 · 私人漫游
 
-**v3.2.0** · Node ≥ 18 · [Docker](https://hub.docker.com/r/w3126197382/meting-api) · MIT
+**v3.3.0** · Node ≥ 18 · [Docker](https://hub.docker.com/r/w3126197382/meting-api) · MIT
 
 ---
 
@@ -33,7 +33,7 @@ GET /api?server={平台}&type={类型}&id={资源}&quality={音质}
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `server` | `netease` | `netease` · `tencent` · `qishui` |
+| `server` | `netease` | `netease` · `tencent` · `qishui` · `kugou` |
 | `type` | `playlist` | 见下表 |
 | `id` | — | 歌曲 / 歌单 ID，或搜索关键词 / 漫游模式 |
 | `quality` | `standard` | 仅 `type=url` |
@@ -41,17 +41,17 @@ GET /api?server={平台}&type={类型}&id={资源}&quality={音质}
 
 ### 能力矩阵
 
-| type | id | 网易 | QQ | 汽水 |
-|------|----|:---:|:--:|:---:|
-| `song` | 歌曲 ID | ✅ | ✅ | ✅ |
-| `playlist` | 歌单 ID | ✅ | ✅ | ✅ |
-| `artist` | 歌手 ID | ✅ | — | — |
-| `search` | 关键词 | ✅ | ✅ | ✅ |
-| `search_playlist` | 关键词 | ✅ | ✅ | — |
-| `search_dj` | 关键词 | ✅ | — | — |
-| `dj` / `dj_detail` / `djprogram` / `dj_hot` | 电台相关 | ✅ | — | — |
-| `fm` | 见下方 | ✅ | ✅ | ✅ |
-| `url` / `lrc` / `pic` | 歌曲 ID | ✅ | ✅ | ✅ |
+| type | id | 网易 | QQ | 汽水 | 酷狗 |
+|------|----|:---:|:--:|:---:|:---:|
+| `song` | 歌曲 ID | ✅ | ✅ | ✅ | ✅ |
+| `playlist` | 歌单 ID | ✅ | ✅ | ✅ | ✅ |
+| `artist` | 歌手 ID | ✅ | — | — | — |
+| `search` | 歌曲关键词（歌名 / 歌手 / 专辑） | ✅ | ✅ | ✅ | ✅ |
+| `search_playlist` | 歌单关键词（歌单名 / 创建者） | ✅ | ✅ | — | ✅ |
+| `search_dj` | 电台关键词（节目 / 主播） | ✅ | — | — | — |
+| `dj` / `dj_detail` / `djprogram` / `dj_hot` | 电台相关 | ✅ | — | — | — |
+| `fm` | 见下方 | ✅ | ✅ | ✅ | ✅ |
+| `url` / `lrc` / `pic` | 歌曲 ID | ✅ | ✅ | ✅ | ✅ |
 
 ### 私人漫游 `fm`
 
@@ -90,22 +90,31 @@ GET /api?server={平台}&type={类型}&id={资源}&quality={音质}
 GET /api?server=netease&type=playlist&id=6907557348
 GET /api?server=tencent&type=song&id=0010BrWk2SucQr
 GET /api?server=qishui&type=search&id=风筝误
+GET /api?server=kugou&type=search&id=情歌
+GET /api?server=kugou&type=search_playlist&id=流行
 
 # 漫游
 GET /api?server=netease&type=fm&id=FAMILIAR
 GET /api?server=tencent&type=fm
 GET /api?server=qishui&type=fm
+GET /api?server=kugou&type=fm
 
 # 媒体
 GET /api?server=netease&type=url&id=254059&quality=lossless
 GET /api?server=tencent&type=url&id=0010BrWk2SucQr&quality=master&redirect=1
 GET /api?server=tencent&type=lrc&id=0010BrWk2SucQr
+GET /api?server=kugou&type=url&id=72db6da75ffe23a3a6361bdb8f44d5f4&quality=flac
+GET /api?server=kugou&type=url&id=72db6da75ffe23a3a6361bdb8f44d5f4&quality=master
+GET /api?server=kugou&type=lrc&id=72db6da75ffe23a3a6361bdb8f44d5f4
+GET /api?server=kugou&type=pic&id=72db6da75ffe23a3a6361bdb8f44d5f4
 ```
 
 **响应**
 
 - 曲目类 → JSON 数组 `{ title, author, url, pic, lrc, ... }`
-- `url` → `{ "url", "quality" }`；加 `redirect=1` 则 302
+- `url` → `{ "url", "quality", "duration", "loudness" }`；加 `redirect=1` 则 302
+  - `duration`：音频时长，单位为秒，例如 `260` 即 4 分 20 秒。
+  - `loudness`：标准化响度信息。酷狗会将播放响应的 `volume` 映射为 `gain`、`volume_peak` 映射为 `peak`；平台未提供可用数据时为 `null`。
 - `pic` → 302 · `lrc` → 纯文本
 
 ### MetingJS
@@ -150,6 +159,7 @@ GET /api?server=tencent&type=lrc&id=0010BrWk2SucQr
 - 网易：浏览器复制整段 Cookie
 - QQ：至少 `uin` + `qqmusic_key`；含 `psrf_qqrefresh_token` 可自动续期
 - 汽水：需 `sessionid` 等登录字段；无公开 refresh，靠监测 + 重新扫码（同备注会覆盖）
+- 酷狗：后台 Cookie 管理页可直接使用“酷狗扫码登录”，成功后自动保存 API 凭证；手动添加时需同时包含 `token` 与 `userid`，建议保留 `vip_token`、`vip_type`、`dfid`、`KUGOU_API_MID`。`320` / 无损为 VIP，Hi-Res / 全景声 / 母带为 SVIP，后台会分开显示权益。
 
 认证头：`X-Auth-Username` + `X-Auth-Token`（管理 API）。
 

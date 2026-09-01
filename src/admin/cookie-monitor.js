@@ -1,6 +1,12 @@
 import store from './store.js'
 import { validateCookie } from './cookie-validator.js'
 import { refreshTencentCookie, refreshTencentCookieByRefreshToken } from '../providers/tencent/refresh.js'
+const getPlatformName = (platform) => ({
+    netease: '网易云音乐',
+    tencent: 'QQ音乐',
+    qishui: '汽水音乐',
+    kugou: '酷狗音乐',
+}[platform] || platform || '未知平台')
 
 class CookieMonitor {
     constructor() {
@@ -145,9 +151,7 @@ class CookieMonitor {
     }
 
     async handleCookieInvalid(cookie, reason) {
-        const platformName = cookie.platform === 'netease'
-            ? '网易云音乐'
-            : cookie.platform === 'qishui' ? '汽水音乐' : 'QQ音乐'
+        const platformName = getPlatformName(cookie.platform)
         
         console.log(`[CookieMonitor] Cookie失效: ${platformName} - ${cookie.note || cookie.id}`)
 
@@ -169,7 +173,7 @@ class CookieMonitor {
     }
 
     async handleVipLost(cookie) {
-        const platformName = cookie.platform === 'netease' ? '网易云音乐' : 'QQ音乐'
+        const platformName = getPlatformName(cookie.platform)
         
         console.log(`[CookieMonitor] VIP播放能力丢失: ${platformName} - ${cookie.note || cookie.id}`)
 
@@ -191,7 +195,7 @@ class CookieMonitor {
     }
 
     async handleVipUnavailable(cookie) {
-        const platformName = cookie.platform === 'netease' ? '网易云音乐' : 'QQ音乐'
+        const platformName = getPlatformName(cookie.platform)
         
         console.log(`[CookieMonitor] Cookie无法播放VIP音乐: ${platformName} - ${cookie.note || cookie.id}`)
 

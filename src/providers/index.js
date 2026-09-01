@@ -1,6 +1,7 @@
-import tencent from "./tencent/index.js"
+import tencent from './tencent/index.js'
 import netease from './netease/index.js'
 import qishui from './qishui/index.js'
+import kugou from './kugou/index.js'
 
 class Providers {
 
@@ -10,6 +11,7 @@ class Providers {
         tencent.register(this)
         netease.register(this)
         qishui.register(this)
+        kugou.register(this)
 
     }
 

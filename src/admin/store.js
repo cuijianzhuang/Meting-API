@@ -389,7 +389,7 @@ class DataStore {
     }
 
     validateCookieFormat(platform, cookieData) {
-        if (!platform || !['netease', 'tencent', 'qishui'].includes(platform)) {
+        if (!platform || !['netease', 'tencent', 'qishui', 'kugou'].includes(platform)) {
             return { valid: false, error: '无效的平台类型' }
         }
 
@@ -416,6 +416,12 @@ class DataStore {
         if (platform === 'qishui') {
             if (!/(?:^|;\s*)(?:sessionid|sessionid_ss|sid_guard|uid_tt|passport_csrf_token)=/i.test(cookieData)) {
                 return { valid: false, error: '汽水音乐 Cookie 需要包含 sessionid 等登录字段' }
+            }
+        }
+
+        if (platform === 'kugou') {
+            if (!/(?:^|;\s*)token=/i.test(cookieData) || !/(?:^|;\s*)userid=/i.test(cookieData)) {
+                return { valid: false, error: '酷狗音乐 Cookie 需要同时包含 token 和 userid 登录字段' }
             }
         }
 

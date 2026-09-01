@@ -1,7 +1,7 @@
 /**
  * 首页 / API 文档页
  */
-export const renderHomepage = ({ baseUrl, runtime, port, overseas, version = '3.2.0' }) => `<!DOCTYPE html>
+export const renderHomepage = ({ baseUrl, runtime, port, overseas, version = '3.3.0' }) => `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -183,6 +183,7 @@ code {
 .plat.ne b { background: #e74c3c; box-shadow: 0 0 10px #e74c3c; }
 .plat.qq b { background: #2ecc71; box-shadow: 0 0 10px #2ecc71; }
 .plat.qs b { background: #5ce1ff; box-shadow: 0 0 10px #5ce1ff; }
+.plat.kg b { background: #ffb347; box-shadow: 0 0 10px #ffb347; }
 
 .hero-side { position: relative; z-index: 1; }
 .eq {
@@ -437,11 +438,12 @@ footer {
       <div>
         <div class="hero-kicker">♪ Frequency docs</div>
         <h1>听感统一<br>一份 <em>API</em></h1>
-        <p class="hero-lead">网易云 · QQ · 汽水。Cookie 管理、会员音质、私人漫游，开箱即用。</p>
+        <p class="hero-lead">网易云 · QQ · 汽水 · 酷狗。Cookie 管理、会员音质、私人漫游，开箱即用。</p>
         <div class="platforms">
           <span class="plat ne"><b></b>网易云</span>
           <span class="plat qq"><b></b>QQ 音乐</span>
           <span class="plat qs"><b></b>汽水音乐</span>
+          <span class="plat kg"><b></b>酷狗音乐</span>
         </div>
       </div>
       <div class="hero-side">
@@ -469,7 +471,7 @@ footer {
       <table>
         <thead><tr><th>参数</th><th>默认</th><th>说明</th></tr></thead>
         <tbody>
-          <tr><td><span class="k">server</span></td><td><code>netease</code></td><td><code>netease</code> · <code>tencent</code> · <code>qishui</code></td></tr>
+          <tr><td><span class="k">server</span></td><td><code>netease</code></td><td><code>netease</code> · <code>tencent</code> · <code>qishui</code> · <code>kugou</code></td></tr>
           <tr><td><span class="k">type</span></td><td><code>playlist</code></td><td>见下方能力矩阵</td></tr>
           <tr><td><span class="k">id</span></td><td>—</td><td>资源 ID / 搜索词 / 漫游模式（QQ 漫游忽略）</td></tr>
           <tr><td><span class="k">quality</span></td><td><code>standard</code></td><td>仅 <code>type=url</code></td></tr>
@@ -483,17 +485,17 @@ footer {
     <h2><span class="num">02</span>能力矩阵</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>type</th><th>id</th><th>网易</th><th>QQ</th><th>汽水</th></tr></thead>
+        <thead><tr><th>type</th><th>id</th><th>网易</th><th>QQ</th><th>汽水</th><th>酷狗</th></tr></thead>
         <tbody>
-          <tr><td><span class="k">song</span></td><td>歌曲 ID</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
-          <tr><td><span class="k">playlist</span></td><td>歌单 ID</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
-          <tr><td><span class="k">artist</span></td><td>歌手 ID</td><td><span class="y">✓</span></td><td class="n">—</td><td class="n">—</td></tr>
-          <tr><td><span class="k">search</span></td><td>关键词</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
-          <tr><td><span class="k">search_playlist</span></td><td>关键词</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td class="n">—</td></tr>
-          <tr><td><span class="k">search_dj</span></td><td>关键词</td><td><span class="y">✓</span></td><td class="n">—</td><td class="n">—</td></tr>
-          <tr><td><span class="k">dj</span> / <span class="k">dj_detail</span> / <span class="k">djprogram</span> / <span class="k">dj_hot</span></td><td>电台相关</td><td><span class="y">✓</span></td><td class="n">—</td><td class="n">—</td></tr>
-          <tr><td><span class="k">fm</span></td><td>见说明</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
-          <tr><td><span class="k">url</span> / <span class="k">lrc</span> / <span class="k">pic</span></td><td>歌曲 ID</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td><span class="k">song</span></td><td>歌曲 ID</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td><span class="k">playlist</span></td><td>歌单 ID</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td><span class="k">artist</span></td><td>歌手 ID</td><td><span class="y">✓</span></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><span class="k">search</span></td><td>歌曲关键词（歌名 / 歌手 / 专辑）</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td><span class="k">search_playlist</span></td><td>歌单关键词（歌单名 / 创建者）</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td class="n">—</td><td><span class="y">✓</span></td></tr>
+          <tr><td><span class="k">search_dj</span></td><td>电台关键词（节目 / 主播）</td><td><span class="y">✓</span></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><span class="k">dj</span> / <span class="k">dj_detail</span> / <span class="k">djprogram</span> / <span class="k">dj_hot</span></td><td>电台相关</td><td><span class="y">✓</span></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><span class="k">fm</span></td><td>见说明</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td><span class="k">url</span> / <span class="k">lrc</span> / <span class="k">pic</span></td><td>歌曲 ID</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -501,26 +503,26 @@ footer {
       <strong>私人漫游：</strong>
       网易支持 <code>DEFAULT</code> / <code>FAMILIAR</code> / <code>EXPLORE</code> / <code>aidj</code> / <code>SCENE_RCMD[:FOCUS|EXERCISE|NIGHT_EMO]</code>。
       QQ <strong>不支持传模式</strong>（官方猜你喜欢固定接口，<code>id</code> 无效），需登录 Cookie。
-      汽水需登录 Cookie。播放一律再请求 <code>type=url</code>。
+      汽水、酷狗需登录 Cookie。播放一律再请求 <code>type=url</code>。
     </div>
   </section>
 
   <section class="section" id="quality">
     <h2><span class="num">03</span>音质</h2>
-    <p class="hint">仅 <code>type=url</code>。会员或曲目资源不足时自动降级；返回的 <code>quality</code> 是实际档位。汽水高档位需 SVIP，极高需 VIP。</p>
+    <p class="hint">仅 <code>type=url</code>。会员或曲目资源不足时自动降级；返回的 <code>quality</code> 是实际档位。酷狗 320 / 无损需 VIP，Hi-Res / 全景声 / 母带需 SVIP。</p>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>quality</th><th>网易</th><th>QQ</th><th>汽水</th></tr></thead>
+        <thead><tr><th>quality</th><th>网易</th><th>QQ</th><th>汽水</th><th>酷狗</th></tr></thead>
         <tbody>
-          <tr><td><span class="k">128</span> / <span class="k">standard</span></td><td>标准</td><td>标准</td><td>标准</td></tr>
-          <tr><td><span class="k">higher</span></td><td>较高</td><td class="n">—</td><td class="n">—</td></tr>
-          <tr><td><span class="k">320</span> / <span class="k">exhigh</span></td><td>极高 <span class="chip chip-vip">VIP</span></td><td>HQ <span class="chip chip-vip">VIP</span></td><td>极高 <span class="chip chip-vip">VIP</span></td></tr>
-          <tr><td><span class="k">flac</span> / <span class="k">lossless</span></td><td>无损 <span class="chip chip-vip">VIP</span></td><td>SQ <span class="chip chip-vip">VIP</span></td><td>无损 <span class="chip chip-svip">SVIP</span></td></tr>
-          <tr><td><span class="k">studio</span></td><td class="n">—</td><td class="n">—</td><td>录音室 <span class="chip chip-svip">SVIP</span></td></tr>
-          <tr><td><span class="k">hires</span> / <span class="k">jyeffect</span></td><td>Hi-Res / 臻音 <span class="chip chip-vip">VIP</span></td><td class="n">—</td><td class="n">—</td></tr>
-          <tr><td><span class="k">sky</span> / <span class="k">jymaster</span> / <span class="k">dolby</span></td><td>环绕 / 母带 / 杜比 <span class="chip chip-svip">SVIP</span></td><td class="n">—</td><td class="n">—</td></tr>
-          <tr><td><span class="k">atmos</span></td><td class="n">—</td><td>臻品全景声 <span class="chip chip-svip">超会</span></td><td>全景 <span class="chip chip-svip">SVIP</span></td></tr>
-          <tr><td><span class="k">master</span></td><td class="n">—</td><td>臻品母带 <span class="chip chip-svip">超会</span></td><td class="n">—</td></tr>
+          <tr><td><span class="k">128</span> / <span class="k">standard</span></td><td>标准</td><td>标准</td><td>标准</td><td>标准</td></tr>
+          <tr><td><span class="k">higher</span></td><td>较高</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><span class="k">320</span> / <span class="k">exhigh</span></td><td>极高 <span class="chip chip-vip">VIP</span></td><td>HQ <span class="chip chip-vip">VIP</span></td><td>极高 <span class="chip chip-vip">VIP</span></td><td>极高 <span class="chip chip-vip">VIP</span></td></tr>
+          <tr><td><span class="k">flac</span> / <span class="k">lossless</span></td><td>无损 <span class="chip chip-vip">VIP</span></td><td>SQ <span class="chip chip-vip">VIP</span></td><td>无损 <span class="chip chip-svip">SVIP</span></td><td>无损 <span class="chip chip-vip">VIP</span></td></tr>
+          <tr><td><span class="k">studio</span></td><td class="n">—</td><td class="n">—</td><td>录音室 <span class="chip chip-svip">SVIP</span></td><td class="n">—</td></tr>
+          <tr><td><span class="k">hires</span> / <span class="k">jyeffect</span></td><td>Hi-Res / 臻音 <span class="chip chip-vip">VIP</span></td><td class="n">—</td><td class="n">—</td><td>Hi-Res <span class="chip chip-svip">SVIP</span></td></tr>
+          <tr><td><span class="k">sky</span> / <span class="k">jymaster</span> / <span class="k">dolby</span></td><td>环绕 / 母带 / 杜比 <span class="chip chip-svip">SVIP</span></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><span class="k">atmos</span></td><td class="n">—</td><td>臻品全景声 <span class="chip chip-svip">超会</span></td><td>全景 <span class="chip chip-svip">SVIP</span></td><td>全景声 <span class="chip chip-svip">SVIP</span></td></tr>
+          <tr><td><span class="k">master</span></td><td class="n">—</td><td>臻品母带 <span class="chip chip-svip">超会</span></td><td class="n">—</td><td>母带 <span class="chip chip-svip">SVIP</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -547,7 +549,13 @@ ${baseUrl}api?server=netease&type=song&id=254059
 ${baseUrl}api?server=tencent&type=playlist&id=7326220405
 
 # 汽水音乐 · 获取歌单歌曲列表
-${baseUrl}api?server=qishui&type=playlist&id=7397692920558452788</pre></div>
+${baseUrl}api?server=qishui&type=playlist&id=7397692920558452788
+
+# 酷狗音乐 · 获取歌单歌曲列表
+${baseUrl}api?server=kugou&type=playlist&id=酷狗歌单ID
+
+# 酷狗音乐 · 获取单曲信息
+${baseUrl}api?server=kugou&type=song&id=72db6da75ffe23a3a6361bdb8f44d5f4</pre></div>
     </div>
     <div class="pane" id="ex-search">
       <div class="code"><button class="copy" type="button">复制</button><pre># 网易云 · 按关键词搜索单曲
@@ -556,11 +564,23 @@ ${baseUrl}api?server=netease&type=search&id=风筝误
 # QQ 音乐 · 按关键词搜索单曲
 ${baseUrl}api?server=tencent&type=search&id=风筝误
 
-# 汽水音乐 · 按关键词搜索单曲
+# 汽水音乐 · 按歌曲关键词搜索单曲
 ${baseUrl}api?server=qishui&type=search&id=抖音热歌
 
-# 网易云 · 按关键词搜索歌单
+# 酷狗音乐 · 按歌名 / 歌手 / 专辑关键词搜索单曲
+${baseUrl}api?server=kugou&type=search&id=情歌
+
+# 网易云 · 按歌单名 / 创建者关键词搜索歌单
 ${baseUrl}api?server=netease&type=search_playlist&id=流行
+
+# QQ 音乐 · 按歌单名 / 创建者关键词搜索歌单
+${baseUrl}api?server=tencent&type=search_playlist&id=流行
+
+# 酷狗音乐 · 按歌单名 / 创建者关键词搜索歌单
+${baseUrl}api?server=kugou&type=search_playlist&id=流行
+
+# 网易云 · 按节目 / 主播关键词搜索电台
+${baseUrl}api?server=netease&type=search_dj&id=代码时间
 
 # 网易云 · 获取电台节目列表（id = 电台 ID）
 ${baseUrl}api?server=netease&type=dj&id=336355127</pre></div>
@@ -579,7 +599,10 @@ ${baseUrl}api?server=netease&type=fm&id=SCENE_RCMD:FOCUS
 ${baseUrl}api?server=tencent&type=fm
 
 # 汽水音乐 · 个性化漫游（需登录 Cookie）
-${baseUrl}api?server=qishui&type=fm</pre></div>
+${baseUrl}api?server=qishui&type=fm
+
+# 酷狗音乐 · 个性化漫游（需登录 Cookie）
+${baseUrl}api?server=kugou&type=fm</pre></div>
       <div class="note">QQ 官方接口固定猜你喜欢，没有熟悉 / 探索等模式参数。</div>
     </div>
     <div class="pane" id="ex-media">
@@ -596,7 +619,22 @@ ${baseUrl}api?server=tencent&type=url&id=0010BrWk2SucQr&quality=flac&redirect=1
 ${baseUrl}api?server=tencent&type=lrc&id=0010BrWk2SucQr
 
 # 汽水音乐 · 获取播放链接（录音室音质 · 需 SVIP）
-${baseUrl}api?server=qishui&type=url&id=汽水歌曲ID&quality=studio</pre></div>
+${baseUrl}api?server=qishui&type=url&id=汽水歌曲ID&quality=studio
+
+# 酷狗音乐 · 获取播放链接（无损；需 VIP）
+${baseUrl}api?server=kugou&type=url&id=72db6da75ffe23a3a6361bdb8f44d5f4&quality=flac
+
+# 酷狗音乐 · 获取播放链接（母带；需 SVIP）
+${baseUrl}api?server=kugou&type=url&id=72db6da75ffe23a3a6361bdb8f44d5f4&quality=master
+
+# 酷狗音乐 · 获取播放链接并 302 跳转
+${baseUrl}api?server=kugou&type=url&id=72db6da75ffe23a3a6361bdb8f44d5f4&redirect=1
+
+# 酷狗音乐 · 获取歌词（纯文本）
+${baseUrl}api?server=kugou&type=lrc&id=72db6da75ffe23a3a6361bdb8f44d5f4
+
+# 酷狗音乐 · 获取封面并 302 跳转
+${baseUrl}api?server=kugou&type=pic&id=72db6da75ffe23a3a6361bdb8f44d5f4</pre></div>
     </div>
     <div class="pane" id="ex-resp">
       <div class="grid-2">
@@ -618,9 +656,13 @@ ${baseUrl}api?server=qishui&type=url&id=汽水歌曲ID&quality=studio</pre></div
           <div class="code"><button class="copy" type="button">复制</button><pre># quality 为实际拿到的音质中文名（可能已降级）
 {
   "url": "https://.../song.flac",
-  "quality": "无损"
+  "quality": "无损",
+  "duration": 260,
+  "loudness": { "gain": -10.1, "peak": 1.6 }
 }</pre></div>
           <div class="note" style="margin-top:10px">
+            <code>duration</code>：音频时长，单位为秒（<code>260</code> 即 4 分 20 秒） ·
+            <code>loudness</code>：标准化响度信息。酷狗映射 <code>volume</code> 为 <code>gain</code>、<code>volume_peak</code> 为 <code>peak</code>；平台未提供时为 <code>null</code><br>
             <code>pic</code> → 302 · <code>lrc</code> → 纯文本 ·
             非法参数 <strong>400</strong> · 无播放链 <strong>403</strong>
           </div>

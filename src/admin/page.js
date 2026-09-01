@@ -838,7 +838,10 @@ const getAdminHtml = () => `<!DOCTYPE html>
                     <div class="card">
                         <div class="card-header">
                             <span class="card-title">Cookie列表</span>
-                            <button class="btn btn-primary btn-sm" onclick="showAddCookieModal()">+ 添加Cookie</button>
+                            <div class="actions">
+                                <button class="btn btn-default btn-sm" onclick="showKugouQrLoginModal()">酷狗扫码登录</button>
+                                <button class="btn btn-primary btn-sm" onclick="showAddCookieModal()">+ 添加Cookie</button>
+                            </div>
                         </div>
                         <div class="table-container">
                             <table class="table">
@@ -1084,6 +1087,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
                             <option value="netease">网易云音乐</option>
                             <option value="tencent">QQ音乐</option>
                             <option value="qishui">汽水音乐</option>
+                            <option value="kugou">酷狗音乐</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -1133,7 +1137,15 @@ const getAdminHtml = () => `<!DOCTYPE html>
                             <li>复制完整 Cookie，至少需要包含 <code>sessionid</code>、<code>sessionid_ss</code>、<code>sid_guard</code> 或 <code>uid_tt</code> 之一</li>
                             <li>选择“汽水音乐”，粘贴 Cookie 后点击“保存并验证”</li>
                         </ol>
-                    </div>
+                    <div class="help-section">
+                        <h4>酷狗音乐 Cookie 获取方法：</h4>
+                        <ol>
+                            <li>在已登录的酷狗客户端或可信接口响应中获取登录凭证</li>
+                            <li>粘贴完整 Cookie，必须包含 <code>token</code> 和 <code>userid</code>；建议同时保留 <code>vip_token</code>、<code>vip_type</code>、<code>dfid</code> 与 <code>KUGOU_API_MID</code></li>
+                            <li>选择“酷狗音乐”，粘贴 Cookie 后点击“保存并验证”</li>
+                            <li>SVIP 音质会单独校验，不能按普通 VIP 处理</li>
+                        </ol>
+                    </div>                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1143,6 +1155,22 @@ const getAdminHtml = () => `<!DOCTYPE html>
         </div>
     </div>
 
+    <div class="modal" id="kugouQrModal">
+        <div class="modal-content" style="max-width:420px;">
+            <div class="modal-header">
+                <h3>酷狗音乐扫码登录</h3>
+                <button class="modal-close" onclick="closeKugouQrLoginModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align:center;">
+                <p id="kugouQrMessage" style="color:var(--text-secondary);font-size:13px;margin:0 0 14px;">正在生成二维码...</p>
+                <img id="kugouQrImage" alt="酷狗音乐登录二维码" style="display:none;width:220px;height:220px;max-width:100%;object-fit:contain;background:#fff;">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" onclick="closeKugouQrLoginModal()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="startKugouQrLogin()">刷新二维码</button>
+            </div>
+        </div>
+    </div>
     <div class="modal" id="userModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1333,7 +1361,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
         };
 
         const getPlatformName = (platform) => {
-            return platform === 'netease' ? '网易云音乐' : platform === 'qishui' ? '汽水音乐' : 'QQ音乐';
+            return platform === 'netease' ? '网易云音乐' : platform === 'qishui' ? '汽水音乐' : platform === 'kugou' ? '酷狗音乐' : 'QQ音乐';
         };
 
         const getValidationBadge = (cookie) => {
@@ -1621,6 +1649,65 @@ const getAdminHtml = () => `<!DOCTYPE html>
             else showToast(res?.error || '发送失败', 'error');
         };
 
+        let kugouQrPollTimer = null;
+        let kugouQrSessionKey = '';
+
+        const stopKugouQrPolling = () => {
+            if (kugouQrPollTimer) clearInterval(kugouQrPollTimer);
+            kugouQrPollTimer = null;
+        };
+
+        const closeKugouQrLoginModal = () => {
+            stopKugouQrPolling();
+            kugouQrSessionKey = '';
+            closeModal('kugouQrModal');
+        };
+
+        const pollKugouQrLogin = async () => {
+            if (!kugouQrSessionKey) return;
+            const res = await api('/admin/qr/check', { method: 'POST', body: JSON.stringify({ platform: 'kugou', key: kugouQrSessionKey }) });
+            if (!res?.success) {
+                document.getElementById('kugouQrMessage').textContent = res?.error || '扫码状态查询失败';
+                stopKugouQrPolling();
+                return;
+            }
+            const data = res.data || {};
+            document.getElementById('kugouQrMessage').textContent = data.message || '等待扫码';
+            if (data.status === 'confirmed') {
+                stopKugouQrPolling();
+                const save = await api('/admin/cookies', { method: 'POST', body: JSON.stringify({ platform: 'kugou', cookie: data.cookie, note: '酷狗扫码登录', isActive: true }) });
+                if (save?.success) {
+                    showToast('酷狗 Cookie 已保存并验证', 'success');
+                    closeKugouQrLoginModal();
+                    loadCookies(); loadDashboard();
+                } else document.getElementById('kugouQrMessage').textContent = save?.error || '登录成功，但保存 Cookie 失败';
+            } else if (data.status === 'expired' || data.status === 'error') {
+                stopKugouQrPolling();
+            }
+        };
+
+        const startKugouQrLogin = async () => {
+            stopKugouQrPolling();
+            document.getElementById('kugouQrImage').style.display = 'none';
+            document.getElementById('kugouQrMessage').textContent = '正在生成二维码...';
+            const res = await api('/admin/qr/create', { method: 'POST', body: JSON.stringify({ platform: 'kugou' }) });
+            if (!res?.success || !res.data?.key || !res.data?.qrurl) {
+                document.getElementById('kugouQrMessage').textContent = res?.error || '二维码生成失败';
+                return;
+            }
+            kugouQrSessionKey = res.data.key;
+            const image = document.getElementById('kugouQrImage');
+            image.src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(res.data.qrurl);
+            image.style.display = 'inline-block';
+            document.getElementById('kugouQrMessage').textContent = res.data.message || '请使用酷狗音乐 App 扫码';
+            kugouQrPollTimer = setInterval(pollKugouQrLogin, 2000);
+            await pollKugouQrLogin();
+        };
+
+        const showKugouQrLoginModal = () => {
+            document.getElementById('kugouQrModal').classList.add('show');
+            startKugouQrLogin();
+        };
         const showAddCookieModal = () => {
             document.getElementById('cookieModalTitle').textContent = '添加Cookie';
             document.getElementById('cookieForm').reset();
