@@ -124,9 +124,6 @@ GET /api?server=kugou&type=pic&id=72db6da75ffe23a3a6361bdb8f44d5f4
   var meting_api = 'https://你的域名/api?server=:server&type=:type&id=:id&auth=:auth&r=:r&redirect=1'
 </script>
 ```
-
-海外部署 QQ 音乐请换用 [@xizeyoupan/meting](https://github.com/xizeyoupan/MetingJS)（JSONP）。
-
 ---
 
 ## 部署
