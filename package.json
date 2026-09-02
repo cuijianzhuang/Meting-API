@@ -1,11 +1,11 @@
 {
   "name": "meting-backend-js",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "",
-  "main": "server.js",
+  "main": "node.js",
   "scripts": {
     "build:all": "node esbuild.config.js",
-    "start:node": "node.exe ./server.js",
+    "start:node": "node.exe ./node.js",
     "start:deno": "deno run --allow-net --allow-env dist/deno.js",
     "test": "vitest run",
     "patch": "npm version patch && git push origin main && git push origin --tags",

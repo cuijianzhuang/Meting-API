@@ -30,4 +30,4 @@ ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 EXPOSE ${PORT}
 
-CMD ["node", "/app/server.js"]
+CMD ["node", "/app/node.js"]
