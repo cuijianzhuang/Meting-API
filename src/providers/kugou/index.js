@@ -25,6 +25,10 @@ export const parseKugouCookie = (raw = '') => Object.fromEntries(text(raw).split
 }).filter(Boolean))
 
 export const isKugouMembershipRequestParamError = (error) => Number(error?.code || error?.error_code) === 20010
+export const isKugouNonFatalError = (error) => {
+  const code = Number(error?.code || error?.error_code || error?.status)
+  return code === 20010 || code === 200101 || (code >= 500 && code < 600)
+}
 export const buildKugouTrackKey = (hash, cookie = {}) => md5(`${text(hash).toLowerCase()}${TRACK_KEY_SALT}${LITE_APPID}${buildKugouDevice(cookie).mid}${Number(cookie.userid) || 0}`)
 export const normalizeKugouId = (id) => {
   const [hash = '', albumAudioId = '0'] = text(id).split(',')
@@ -34,16 +38,18 @@ export const normalizeKugouId = (id) => {
 const imageUrl = (value) => text(value).replace('{size}', '400').replace('{hash}', '').replace('http://', 'https://')
 
 export const mapKugouSong = (song = {}) => {
+  const info = song.info || {}
+  const transParam = song.trans_param || song.transParam || {}
   const hash = text(song.hash || song.Hash || song.fileHash || song.FileHash).toLowerCase()
   const fileName = text(song.FileName || song.filename || song.file_name)
   const fileTitle = fileName.includes(' - ') ? fileName.slice(fileName.indexOf(' - ') + 3).trim() : fileName
-  const duration = Number(song.duration ?? song.Duration ?? song.timelength ?? 0)
+  const duration = Number(song.duration ?? song.Duration ?? song.timelength ?? song.time_length ?? info.duration ?? 0)
   return {
     id: hash,
     title: text(song.songname || song.songName || song.SongName || song.name || fileTitle),
     author: text(song.singername || song.singerName || song.SingerName || song.author_name || song.author),
-    album: text(song.album_name || song.albumName || song.AlbumName || song.album),
-    pic: imageUrl(song.img || song.image || song.Image || song.album_img || song.albumImage),
+    album: text(song.album_name || song.albumName || song.AlbumName || song.album || song.albumname),
+    pic: imageUrl(song.img || song.image || song.Image || song.album_img || song.albumImage || transParam.union_cover || info.image),
     duration: duration > 10000 ? Math.round(duration / 1000) : duration,
     url: hash,
     lrc: hash,
@@ -82,7 +88,11 @@ export const requestKugou = async (path, { params = {}, method = 'GET', body, co
     },
     ...(body !== undefined ? { body: bodyText } : {}),
   })
-  if (!response.ok) throw new Error(`酷狗接口返回 ${response.status}`)
+  if (!response.ok) {
+    const error = new Error(`酷狗接口返回 ${response.status}`)
+    error.status = response.status
+    throw error
+  }
   const data = await response.json()
   if (data?.error_code !== undefined && Number(data.error_code) !== 0) {
     const error = new Error(data?.error || data?.msg || data?.data?.errmsg || '酷狗接口请求失败')
@@ -93,10 +103,12 @@ export const requestKugou = async (path, { params = {}, method = 'GET', body, co
   return data
 }
 
-const extractSongs = (data) => {
-  const list = data?.data?.info || data?.data?.lists || data?.data?.songs || data?.data?.songlist || data?.info || []
+export const extractKugouSongs = (data) => {
+  const list = data?.data?.info || data?.data?.lists || data?.data?.songs || data?.data?.songlist || data?.data?.song_list || data?.info || []
   return Array.isArray(list) ? list.map(mapKugouSong).filter((song) => song.id) : []
 }
+
+const extractSongs = extractKugouSongs
 
 const search = async (keyword, cookie) => {
   const data = await requestKugou('/song_search_v2', {
@@ -108,6 +120,16 @@ const search = async (keyword, cookie) => {
   return extractSongs(data)
 }
 
+export const mapKugouPlaylist = (item = {}) => ({
+  id: text(item.global_collection_id || item.gid || item.specialid || item.id),
+  title: text(item.specialname || item.name || item.title),
+  author: text(item.nickname || item.username || item.author_name),
+  pic: imageUrl(item.img || item.image || item.imgurl),
+  url: text(item.global_collection_id || item.gid || item.specialid || item.id),
+  trackCount: Number(item.song_count || item.trackCount || 0),
+  source: 'kugou',
+})
+
 const searchPlaylist = async (keyword, cookie) => {
   const data = await requestKugou('/v1/search/special', {
     params: { keyword, page: 1, pagesize: 30, platform: 'AndroidFilter' }, cookie,
@@ -115,23 +137,61 @@ const searchPlaylist = async (keyword, cookie) => {
   })
   const list = data?.data?.lists || data?.data?.info || data?.lists || []
   return Array.isArray(list) ? list.map((item) => ({
-    id: text(item.global_collection_id || item.specialid || item.id),
+    id: text(item.global_collection_id || item.gid || item.specialid || item.id),
     title: text(item.specialname || item.name || item.title),
     author: text(item.nickname || item.username || item.author_name),
     pic: imageUrl(item.img || item.image || item.imgurl),
-    url: text(item.global_collection_id || item.specialid || item.id),
+    url: text(item.global_collection_id || item.gid || item.specialid || item.id),
     trackCount: Number(item.song_count || item.trackCount || 0),
     source: 'kugou',
   })).filter((item) => item.id) : []
 }
 
+export const buildKugouFmRequest = (cookie = {}, clienttime = Date.now()) => {
+  const userid = Number(cookie.userid || 0)
+  const body = {
+    appid: LITE_APPID,
+    clienttime,
+    mid: text(cookie.KUGOU_API_MID || cookie.mid || cookie.kg_mid || MID),
+    action: 'play',
+    recommend_source_locked: 0,
+    song_pool_id: 0,
+    callerid: 0,
+    m_type: 1,
+    platform: 'ios',
+    area_code: 1,
+    remain_songcnt: 0,
+    clientver: LITE_CLIENTVER,
+    is_overplay: 0,
+    mode: 'normal',
+    fakem: 'ca981cfc583a4c37f28d2d49000013c16a0a',
+    key: md5(String(LITE_APPID) + SIGN_SALT + String(LITE_CLIENTVER) + String(clienttime)),
+  }
+  if (userid) {
+    body.userid = userid
+    body.kguid = userid
+  }
+  if (text(cookie.token)) body.token = cookie.token
+  if (cookie.vip_type !== undefined && cookie.vip_type !== '') body.vip_type = cookie.vip_type
+  return { path: '/v2/personal_recommend', method: 'POST', body, router: 'persnfm.service.kugou.com' }
+}
+
 const personalFm = async (cookie) => {
-  const data = await requestKugou('/v2/personal_recommend', {
-    method: 'POST',
-    body: { action: 'play', recommend_source_locked: 0, song_pool_id: 0, callerid: 0, m_type: 1, platform: 'ios', area_code: 1, remain_songcnt: 0, mode: 'normal', fakem: 'ca981cfc583a4c37f28d2d49000013c16a0a' },
-    cookie, headers: { 'x-router': 'persnfm.service.kugou.com' },
-  })
-  return extractSongs(data)
+  try {
+    const request = buildKugouFmRequest(cookie)
+    const data = await requestKugou(request.path, {
+      method: request.method,
+      body: request.body,
+      cookie,
+      headers: { 'x-router': request.router },
+    })
+    return extractSongs(data)
+  } catch (error) {
+    // Personal FM is an optional Kugou feature; upstream rejection or outage
+    // should result in an empty provider response, not a unified API 500.
+    if (isKugouNonFatalError(error)) return []
+    throw error
+  }
 }
 
 const song = async (id, cookie) => {
@@ -142,9 +202,76 @@ const song = async (id, cookie) => {
   }))
 }
 
-const playlist = async (id, cookie) => extractSongs(await requestKugou('/pubsongs/v2/get_other_list_file_nofilt', {
-  params: { global_collection_id: id, area_code: 1, begin_idx: 0, pagesize: 1000, plat: 1, type: 1, mode: 1, personal_switch: 1 }, cookie,
-}))
+export const buildKugouPlaylistPageUrl = (value = '') => {
+  const gcid = text(value).match(/gcid_([A-Za-z0-9]+)/i)?.[1] || text(value).replace(/^gcid_/i, '')
+  return gcid ? 'https://www.kugou.com/songlist/gcid_' + gcid + '/?src_cid=' + gcid + '&kgsscty1=wechat&chl=wechat&iszlist=1' : ''
+}
+
+export const extractKugouGcid = (value = '') => {
+  const input = text(value)
+  const match = input.match(/gcid_([A-Za-z0-9]+)/i)
+  return match ? match[1] : ''
+}
+
+const resolveKugouPlaylistId = async (value) => {
+  const input = text(value)
+  if (/^gcid_[A-Za-z0-9]+$/i.test(input)) return resolveKugouPlaylistId(buildKugouPlaylistPageUrl(input))
+  if (!/^https?:\/\//i.test(input)) return input
+  const response = await fetch(input, { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0' } })
+  if (!response.ok) throw new Error('酷狗歌单页面返回 ' + response.status)
+  const html = await response.text()
+  const globalId = html.match(/global_collection_id\s*['"]?\s*[:=]\s*['"]([^'"]+)/i)
+  const specialId = html.match(/specialId\s*:\s*['"](collection_[^'"]+)/i)
+  return globalId?.[1] || specialId?.[1] || input
+}
+export const buildKugouPlaylistRequest = (id, { page = 1, pagesize = 30 } = {}) => {
+  const size = Number(pagesize) > 0 ? Number(pagesize) : 30
+  const currentPage = Number(page) > 0 ? Number(page) : 1
+  return {
+    path: '/pubsongs/v2/get_other_list_file_nofilt',
+    params: {
+      area_code: 1,
+      begin_idx: (currentPage - 1) * size,
+      plat: 1,
+      type: 1,
+      mode: 1,
+      personal_switch: 1,
+      extend_fields: 'abtags,hot_cmt,popularization',
+      pagesize: size,
+      global_collection_id: text(id),
+    },
+  }
+}
+
+export const isKugouCollectionId = (value = '') => /^collection_[A-Za-z0-9_]+$/i.test(text(value))
+
+const playlist = async (id, cookie) => {
+  try {
+    const resolvedId = await resolveKugouPlaylistId(id)
+    const pageSize = 300
+    const allSongs = []
+    let begin = 0
+    let total = Infinity
+    while (allSongs.length < total) {
+      const request = buildKugouPlaylistRequest(resolvedId, { page: Math.floor(begin / pageSize) + 1, pagesize: pageSize })
+      request.params.begin_idx = begin
+      const data = await requestKugou(request.path, { params: request.params, cookie })
+      const pageSongs = data?.data?.songs || []
+      total = Number(data?.data?.count || 0)
+      if (!pageSongs.length) break
+      allSongs.push(...pageSongs)
+      begin += pageSongs.length
+      if (pageSongs.length < pageSize) break
+    }
+    return allSongs.map(mapKugouSong).filter((song) => song.id)
+  } catch (error) {
+    // Kugou returns 20010 for unavailable/private collections and occasionally
+    // responds with 5xx when this legacy endpoint is degraded. A provider miss
+    // should not turn the unified API request into an internal server error.
+    if (isKugouNonFatalError(error)) return []
+    throw error
+  }
+}
 
 const KUGOU_QUALITY_MAP = {
   standard: { request: 128, name: '标准' },

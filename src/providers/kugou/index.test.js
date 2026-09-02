@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import kugou, { buildKugouDevice, mapKugouSong, normalizeKugouId, buildKugouSignature } from './index.js'
+import kugou, { buildKugouDevice, mapKugouSong, normalizeKugouId, buildKugouSignature, isKugouNonFatalError, buildKugouPlaylistRequest } from './index.js'
 
 describe('kugou provider contract', () => {
   it('registers the unified Meting capabilities', () => {
@@ -36,6 +36,27 @@ describe('kugou provider contract', () => {
     })
   })
 
+  it('only accepts collection ids for playlist requests', async () => {
+    const { isKugouCollectionId } = await import('./index.js')
+    expect(isKugouCollectionId('collection_3_975665376_1162_0')).toBe(true)
+    expect(isKugouCollectionId('gcid_3zik61ilzx7z09d')).toBe(false)
+    expect(isKugouCollectionId('1852429')).toBe(false)
+    expect(isKugouCollectionId('https://m.kugou.com/songlist/gcid_3zik61ilzx7z09d/')).toBe(false)
+  })
+
+  it('normalizes a Kugou shared gcid into its share page URL', async () => {
+    const { buildKugouPlaylistPageUrl } = await import('./index.js')
+    expect(buildKugouPlaylistPageUrl('gcid_3zik61ilzx7z09d')).toBe('https://www.kugou.com/songlist/gcid_3zik61ilzx7z09d/')
+  })
+
+  it('maps Kugou search playlist results to the global collection id', async () => {
+    const { mapKugouPlaylist } = await import('./index.js')
+    expect(mapKugouPlaylist({ specialid: 1852429, gid: 'collection_3_975665376_920_0', specialname: '测试歌单' })).toMatchObject({
+      id: 'collection_3_975665376_920_0',
+      url: 'collection_3_975665376_920_0',
+    })
+  })
+
   it('builds the tracker key required by the play-url endpoint', async () => {
     const { buildKugouTrackKey } = await import('./index.js')
     expect(buildKugouTrackKey('abcdef', { KUGOU_API_MID: 'device-mid', userid: '42' })).toBe('1caced7d174e717d08ddd25bc1990975')
@@ -44,6 +65,18 @@ describe('kugou provider contract', () => {
   it('reports the actual standard quality when an SVIP request returns a 128kbps MP3', async () => {
     const { getKugouActualQuality } = await import('./index.js')
     expect(getKugouActualQuality({ bitRate: 128000, extName: 'mp3', fileSize: 4_162_655 })).toMatchObject({ name: '标准' })
+  })
+
+  it('uses the reference personal FM endpoint request shape', async () => {
+    const { buildKugouFmRequest } = await import('./index.js')
+    const request = buildKugouFmRequest({ userid: '42', token: 'token-1', vip_type: '1', KUGOU_API_MID: 'mid-1' }, 1700000000000)
+    expect(request).toMatchObject({
+      path: '/v2/personal_recommend',
+      method: 'POST',
+      router: 'persnfm.service.kugou.com',
+      body: expect.objectContaining({ appid: 3116, clientver: 11440, clienttime: 1700000000000, userid: '42', kguid: '42', token: 'token-1', vip_type: '1' }),
+    })
+    expect(request.body.key).toHaveLength(32)
   })
 
   it('uses media metadata instead of a requested master flag on a downgraded response', async () => {
@@ -65,6 +98,30 @@ describe('kugou provider contract', () => {
       clientver: 11440,
     })
   })
+  it('builds playlist requests like the reference Kugou API module', () => {
+    expect(buildKugouPlaylistRequest('12345678', { page: 2, pagesize: 30 })).toEqual({
+      path: '/pubsongs/v2/get_other_list_file_nofilt',
+      params: {
+        area_code: 1,
+        begin_idx: 30,
+        plat: 1,
+        type: 1,
+        mode: 1,
+        personal_switch: 1,
+        extend_fields: 'abtags,hot_cmt,popularization',
+        pagesize: 30,
+        global_collection_id: '12345678',
+      },
+    })
+  })
+
+  it('treats expired or rejected Kugou upstream requests as non-fatal provider misses', () => {
+    expect(isKugouNonFatalError({ code: 20010 })).toBe(true)
+    expect(isKugouNonFatalError({ code: 200101 })).toBe(true)
+    expect(isKugouNonFatalError({ status: 500 })).toBe(true)
+    expect(isKugouNonFatalError({ code: 401 })).toBe(false)
+  })
+
   it('creates the Android request signature deterministically', () => {
     expect(buildKugouSignature({ appid: 3116, clientver: 11440, hash: 'abc' }, '')).toBe('c61e6852e071acf8e5435eff08874afe')
   })
