@@ -12,6 +12,7 @@ export const VALID_QUALITY = {
     ],
     kugou: [
         '128', 'standard', '320', 'exhigh', 'flac', 'lossless', 'hires', 'atmos', 'master',
+        'viper_atmos', 'viper_tape', 'viper_clear', 'viper_hifi', 'acappella', 'multitrack',
     ],
 }
 
@@ -30,13 +31,19 @@ export const QUALITY_META = {
     'flac': { name: '无损', tencent: 'SQ无损品质', vip: true, svip: false, qishuiSvip: true },
     'lossless': { name: '无损', tencent: 'SQ无损品质', vip: true, svip: false, qishuiSvip: true },
     // 网易云
-    'hires': { name: '高解析度无损', kugou: '高解析度无损', vip: true, svip: false },
+    'hires': { name: '高解析度无损', kugou: 'Hi-Res音质', vip: true, svip: false },
+    'viper_atmos': { name: '蝰蛇全景声2.0', kugou: '蝰蛇全景声2.0', vip: false, svip: true },
+    'viper_tape': { name: '蝰蛇母带音质', kugou: '蝰蛇母带音质', vip: false, svip: true },
+    'viper_clear': { name: '蝰蛇超清音质', kugou: '蝰蛇超清音质', vip: false, svip: true },
+    'viper_hifi': { name: '蝰蛇HiFi音质', kugou: '蝰蛇HiFi音质', vip: false, svip: true },
+    'acappella': { name: '人声伴奏', kugou: '人声伴奏', vip: false, svip: true },
+    'multitrack': { name: '多轨音质', kugou: '多轨音质', vip: false, svip: true },
     'jyeffect': { name: '高清臻音', vip: true, svip: false },
     'sky': { name: '沉浸环绕声', vip: false, svip: true },
     'jymaster': { name: '超清母带', vip: false, svip: true },
     'dolby': { name: '杜比全景声', vip: false, svip: true },
     // QQ 音乐（超级会员）/ 汽水全景
-    'atmos': { name: '臻品全景声', qishui: '全景声', tencent: '臻品全景声', kugou: '全景声', vip: false, svip: true, qishuiSvip: true },
+    'atmos': { name: '臻品全景声', qishui: '全景声', tencent: '臻品全景声', kugou: '蝰蛇全景声2.0', vip: false, svip: true, qishuiSvip: true },
     'master': { name: '臻品母带', tencent: '臻品母带', kugou: '母带', vip: false, svip: true },
     // 汽水音乐
     'studio': { name: '录音室音质', qishui: '录音室音质', vip: false, svip: true, qishuiSvip: true },
@@ -52,7 +59,6 @@ export const getQualityRequirement = (quality, server) => {
     const meta = QUALITY_META[key]
     if (!meta) return '免费'
     if (server === 'qishui' && meta.qishuiSvip) return 'SVIP'
-    if (server === 'kugou' && key === 'hires') return 'SVIP'
     if (meta.svip) return 'SVIP'
     if (meta.vip) return 'VIP'
     return '免费'

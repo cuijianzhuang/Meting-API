@@ -9,7 +9,6 @@ describe('3.3.0 homepage capability documentation', () => {
     expect(html).toContain('<th>酷狗</th>')
     expect(html).toContain('歌曲关键词（歌名 / 歌手 / 专辑）')
     expect(html).toContain('歌单关键词（歌单名 / 创建者）')
-    expect(html).toContain('酷狗音乐 · 按关键词搜索单曲')
     expect(html).toContain('酷狗音乐 · 按歌名 / 歌手 / 专辑关键词搜索单曲')
     expect(html).toContain('酷狗音乐 · 按歌单名 / 创建者关键词搜索歌单')
     expect(html).toContain('酷狗音乐 · 获取歌单歌曲列表')

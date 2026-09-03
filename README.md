@@ -78,8 +78,12 @@ GET /api?server={平台}&type={类型}&id={资源}&quality={音质}
 | `sky` / `jymaster` / `dolby` | 环绕 / 母带 / 杜比 · SVIP | — | — |
 | `atmos` | — | 臻品全景声 · 超会 | 全景 · SVIP |
 | `master` | — | 臻品母带 · 超会 | — |
+| `viper_atmos` / `atmos` | — | — | 蝰蛇全景声2.0 · SVIP |
+| `viper_tape` | — | — | 蝰蛇母带音质 · SVIP |
+| `viper_clear` | — | — | 蝰蛇超清音质 · SVIP |
+| `viper_hifi` | — | — | 蝰蛇HiFi音质 · SVIP |
 
-> 汽水：`studio` / `atmos` / `flac`·`lossless` 需 SVIP；`320`·`exhigh` 需 VIP。QQ 超会对应文档里的 SVIP 档。
+> 汽水：`studio` / `atmos` / `flac`·`lossless` 需 SVIP；`320`·`exhigh` 需 VIP。酷狗：`320` / `flac`·`lossless` / `hires` 需 VIP；蝰蛇音质需 SVIP。QQ 超会对应文档里的 SVIP 档。
 
 ---
 

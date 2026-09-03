@@ -8,16 +8,22 @@ describe('kugou quality membership tiers', () => {
     expect(getQualityRequirement('lossless', 'kugou')).toBe('VIP')
   })
 
-  it('marks immersive and master qualities as SVIP', () => {
-    expect(getQualityRequirement('hires', 'kugou')).toBe('SVIP')
+  it('marks Hi-Res as VIP and Viper formats as SVIP', () => {
+    expect(getQualityRequirement('hires', 'kugou')).toBe('VIP')
     expect(getQualityRequirement('atmos', 'kugou')).toBe('SVIP')
     expect(getQualityRequirement('master', 'kugou')).toBe('SVIP')
+    expect(getQualityRequirement('viper_tape', 'kugou')).toBe('SVIP')
+    expect(getQualityRequirement('viper_clear', 'kugou')).toBe('SVIP')
+    expect(getQualityRequirement('viper_hifi', 'kugou')).toBe('SVIP')
   })
 
   it('keeps standard quality free and names Kugou formats', () => {
     expect(getQualityRequirement('standard', 'kugou')).toBe('免费')
-    expect(getQualityName('hires', 'kugou')).toBe('高解析度无损')
-    expect(getQualityName('atmos', 'kugou')).toBe('全景声')
+    expect(getQualityName('hires', 'kugou')).toBe('Hi-Res音质')
+    expect(getQualityName('atmos', 'kugou')).toBe('蝰蛇全景声2.0')
     expect(getQualityName('master', 'kugou')).toBe('母带')
+    expect(getQualityName('viper_tape', 'kugou')).toBe('蝰蛇母带音质')
+    expect(getQualityName('viper_clear', 'kugou')).toBe('蝰蛇超清音质')
+    expect(getQualityName('viper_hifi', 'kugou')).toBe('蝰蛇HiFi音质')
   })
 })

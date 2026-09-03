@@ -44,7 +44,7 @@ const trimLyric = (lyric) => {
   return result.sort((a, b) => a.time - b.time)
 }
 
-export const getPathFromURL = (url, strict = true) => {
+const getPathFromURL = (url, strict = true) => {
   const queryIndex = url.indexOf("?");
   const result = url.substring(url.indexOf("/", 8), queryIndex === -1 ? url.length : queryIndex);
   if (strict === false && result.endsWith("/")) {

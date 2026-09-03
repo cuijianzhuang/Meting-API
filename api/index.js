@@ -24,15 +24,6 @@ async function writeReadableStreamToWritable(stream, writable) {
     }
 }
 
-class NodeResponse extends Response {
-    get headers() {
-        return super.headers
-    }
-
-    clone() {
-        return super.clone()
-    }
-}
 const getRequestListener = (fetchCallback) => {
     return async (incoming, outgoing) => {
         const method = incoming.method || 'GET'
@@ -66,7 +57,7 @@ const getRequestListener = (fetchCallback) => {
         try {
             res = (await fetchCallback(new Request(url.toString(), init)))
         } catch {
-            res = new NodeResponse(null, { status: 500 })
+            res = new Response(null, { status: 500 })
         }
 
         const contentType = res.headers.get('content-type') || ''

@@ -1,11 +1,6 @@
-// import crypto from 'https://esm.sh/crypto-browserify@3.12.0'
-// import { Buffer } from 'https://esm.sh/buffer@6.0.3'
-
 import crypto from 'crypto-browserify'
 import { Buffer } from 'buffer/index.js'
 
-// import crypto from 'node:crypto'
-// import {Buffer} from 'node:buffer'
 
 const iv = Buffer.from('0102030405060708')
 const presetKey = Buffer.from('0CoJUm6Qyw8W8jud')

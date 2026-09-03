@@ -69,24 +69,3 @@ export const adminMiddleware = async (c, next) => {
     
     await next()
 }
-
-export const optionalAuth = async (c, next) => {
-    const username = c.req.header('X-Auth-Username')
-    const token = c.req.header('X-Auth-Token')
-    const apiToken = extractBearerToken(c.req.header('Authorization'))
-
-    if (apiToken) {
-        const result = store.validateApiToken(apiToken)
-        
-        if (result.valid) {
-            applyApiTokenContext(c, result.tokenData)
-            return await next()
-        }
-    }
-
-    if (username && token && store.validateToken(username, token)) {
-        c.set('username', username)
-    }
-    
-    await next()
-}

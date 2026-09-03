@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import kugou, { buildKugouDevice, mapKugouSong, normalizeKugouId, buildKugouSignature, isKugouNonFatalError, buildKugouPlaylistRequest } from './index.js'
+import kugou, { buildKugouDevice, buildKugouLegacyMid, mapKugouSong, normalizeKugouId, buildKugouSignature, isKugouNonFatalError, buildKugouPlaylistRequest, isKugouShareCode, extractKugouShareCollectionId, buildKugouShareRequest, buildKugouShareKey } from './index.js'
 
 describe('kugou provider contract', () => {
   it('registers the unified Meting capabilities', () => {
@@ -44,9 +44,48 @@ describe('kugou provider contract', () => {
     expect(isKugouCollectionId('https://m.kugou.com/songlist/gcid_3zik61ilzx7z09d/')).toBe(false)
   })
 
-  it('normalizes a Kugou shared gcid into its share page URL', async () => {
-    const { buildKugouPlaylistPageUrl } = await import('./index.js')
-    expect(buildKugouPlaylistPageUrl('gcid_3zik61ilzx7z09d')).toBe('https://www.kugou.com/songlist/gcid_3zik61ilzx7z09d/')
+  it('maps legacy Android playlist records with audio_name and authors', () => {
+    expect(mapKugouSong({
+      hash: 'ABCDEF', audio_name: 'Rosy赵露思 - 有你在 (Whatever官方中文版)',
+      authors: [{ author_name: 'Rosy赵露思' }], albuminfo: { name: '有你在' }, timelen: 152607,
+    })).toMatchObject({
+      id: 'abcdef', title: '有你在 (Whatever官方中文版)', author: 'Rosy赵露思', album: '有你在', duration: 153,
+    })
+  })
+
+  it('generates a deterministic decimal legacy Android MID from a seed', () => {
+    expect(buildKugouLegacyMid('device-seed')).toMatch(/^\d+$/)
+    expect(buildKugouLegacyMid('device-seed')).toBe(buildKugouLegacyMid('device-seed'))
+  })
+
+  it('normalizes desktop and mobile gcid sharing URLs to the mobile parser URL', async () => {
+    const { buildKugouMobilePlaylistUrl } = await import('./index.js')
+    expect(buildKugouMobilePlaylistUrl('https://www.kugou.com/songlist/gcid_3zik61ilzx7z09d/?chl=wechat')).toBe('https://m.kugou.com/songlist/gcid_3zik61ilzx7z09d/')
+    expect(buildKugouMobilePlaylistUrl('https://m.kugou.com/songlist/gcid_3zik61ilzx7z09d/')).toBe('https://m.kugou.com/songlist/gcid_3zik61ilzx7z09d/')
+  })
+
+  it('recognizes numeric Kugou share codes without confusing playlist ids', () => {
+    expect(isKugouShareCode('39499569')).toBe(true)
+    expect(isKugouShareCode(' collection_3_975665376_1162_0 ')).toBe(false)
+    expect(isKugouShareCode('1852429')).toBe(false)
+  })
+
+  it('builds the legacy share-code command request from dynamic device values', () => {
+    const request = buildKugouShareRequest('39499569', {
+      mid: 'mid-1', clienttime: 841742523, clienttimems: 1788398523665, deviceId: 'device-1',
+    })
+    expect(request).toMatchObject({
+      url: 'http://t.kugou.com/command/', method: 'POST',
+      headers: expect.objectContaining({ 'KG-CLIENTTIMEMS': '1788398523665', 'KG-DEVID': 'device-1' }),
+      body: { appid: 1001, clientver: 20141, mid: 'mid-1', clienttime: 841742523, data: '39499569', key: expect.any(String) },
+    })
+    expect(buildKugouShareKey('39499569')).toBe(request.body.key)
+  })
+
+  it('extracts a collection id from either command response field', () => {
+    expect(extractKugouShareCollectionId({ status: 1, err_code: 0, data: { info: { global_collection_id: 'collection_3_975665376_1162_0' } } })).toBe('collection_3_975665376_1162_0')
+    expect(extractKugouShareCollectionId({ status: 1, err_code: 0, data: { info: { copy_gcid: 'collection_3_975665376_1162_0' } } })).toBe('collection_3_975665376_1162_0')
+    expect(extractKugouShareCollectionId({ status: 0, err_code: 20006, data: { info: {} } })).toBe('')
   })
 
   it('maps Kugou search playlist results to the global collection id', async () => {
@@ -84,6 +123,22 @@ describe('kugou provider contract', () => {
     expect(getKugouActualQuality({ quality: 'super', bitRate: 128000, extName: 'mp3', fileSize: 4_162_655 })).toMatchObject({ name: '标准' })
   })
 
+  it('prefers explicit Viper quality metadata returned by Kugou', async () => {
+    const { getKugouActualQuality } = await import('./index.js')
+    expect(getKugouActualQuality({ quality: 'viper_tape', bitRate: 128000, extName: 'mp3' })).toMatchObject({ name: '蝰蛇母带音质' })
+    expect(getKugouActualQuality({ quality_name: 'viper_hifi', bitRate: 128000, extName: 'mp3' })).toMatchObject({ name: '蝰蛇HiFi音质' })
+    expect(getKugouActualQuality({ quality: 'multitrack' })).toMatchObject({ name: '多轨音质' })
+  })
+
+  it('maps all supported Viper quality aliases to tracker request values', async () => {
+    const { getKugouQuality } = await import('./index.js')
+    expect(getKugouQuality('hires')).toMatchObject({ request: 'high', name: 'Hi-Res音质' })
+    expect(getKugouQuality('atmos')).toMatchObject({ request: 'viper_atmos', name: '蝰蛇全景声2.0' })
+    expect(getKugouQuality('viper_tape')).toMatchObject({ request: 'viper_tape', name: '蝰蛇母带音质' })
+    expect(getKugouQuality('viper_clear')).toMatchObject({ request: 'viper_clear', name: '蝰蛇超清音质' })
+    expect(getKugouQuality('viper_hifi')).toMatchObject({ request: 'viper_hifi', name: '蝰蛇HiFi音质' })
+  })
+
   it('maps Kugou volume metadata to the shared loudness shape', async () => {
     const { mapKugouLoudness } = await import('./index.js')
     expect(mapKugouLoudness({ volume: -10.1, volume_peak: 1.6, volume_gain: 0 })).toEqual({ gain: -10.1, peak: 1.6 })
@@ -115,6 +170,8 @@ describe('kugou provider contract', () => {
     })
   })
 
+
+
   it('treats expired or rejected Kugou upstream requests as non-fatal provider misses', () => {
     expect(isKugouNonFatalError({ code: 20010 })).toBe(true)
     expect(isKugouNonFatalError({ code: 200101 })).toBe(true)
@@ -124,5 +181,34 @@ describe('kugou provider contract', () => {
 
   it('creates the Android request signature deterministically', () => {
     expect(buildKugouSignature({ appid: 3116, clientver: 11440, hash: 'abc' }, '')).toBe('c61e6852e071acf8e5435eff08874afe')
+  })
+  it('extracts playlist metadata and tracks from a mobile Kugou share page', async () => {
+    const { extractKugouMobilePlaylist } = await import('./index.js')
+    const html = '<script>window.$output = {"info":{"listinfo":{"name":"甜度100%","list_create_username":"芋圆啵啵","pic":"http://c1.kgimg.com/custom/{size}/cover.jpg","count":52},"songs":[{"hash":"9156BDEEA2A465F95EED8EDDF595DB03","name":"Rosy赵露思 - 有你在","timelen":152607,"albuminfo":{"name":"有你在"},"cover":"http://imge.kugou.com/stdmusic/{size}/cover.jpg"}]}};</script>'
+    expect(extractKugouMobilePlaylist(html)).toMatchObject({
+      trackCount: 52,
+      songs: [{ id: '9156bdeea2a465f95eed8eddf595db03', title: '有你在', author: 'Rosy赵露思', album: '有你在', duration: 153 }],
+    })
+  })
+
+  it('builds the legacy Android special playlist request for full-track pagination', async () => {
+    const { buildKugouSpecialPlaylistRequest } = await import('./index.js')
+    expect(buildKugouSpecialPlaylistRequest(5294381, 2, 300, { mid: 'device-mid', dfid: 'dfid-1' })).toEqual({
+      base: 'https://gatewayretry.kugou.com',
+      path: '/v2/get_other_list_file',
+      headers: expect.objectContaining({
+        'x-router': 'pubsongscdn.kugou.com',
+        'User-Agent': 'Android9-AndroidPhone-11239-18-0-playlist-wifi',
+        mid: 'device-mid', dfid: 'dfid-1',
+      }),
+      params: expect.objectContaining({
+        specialid: 5294381,
+        specalidpgc: 5294381,
+        page: 2,
+        pagesize: 300,
+        appid: 1005,
+        clientver: 11239,
+      }),
+    })
   })
 })
