@@ -189,7 +189,9 @@ export const requestKugou = async (path, { params = {}, method = 'GET', body, co
 }
 
 export const extractKugouSongs = (data) => {
-  const list = data?.data?.info || data?.data?.lists || data?.data?.songs || data?.data?.songlist || data?.data?.song_list || data?.info || []
+  const list = Array.isArray(data?.data)
+    ? data.data
+    : data?.data?.info || data?.data?.lists || data?.data?.songs || data?.data?.songlist || data?.data?.song_list || data?.info || []
   return Array.isArray(list) ? list.map(mapKugouSong).filter((song) => song.id) : []
 }
 
@@ -271,11 +273,22 @@ const personalFm = async (cookie) => {
   }
 }
 
+export const buildKugouSongRequest = (id) => {
+  const { hash, albumAudioId } = normalizeKugouId(id)
+  return {
+    path: '/v1/audio/audio',
+    method: 'GET',
+    base: 'http://kmr.service.kugou.com',
+    params: { data: [{ hash, audio_id: albumAudioId }] },
+    headers: { 'x-router': 'kmr.service.kugou.com' },
+  }
+}
+
 const song = async (id, cookie) => {
-  const { hash } = normalizeKugouId(id)
-  return extractSongs(await requestKugou('/v1/audio/audio', {
-    method: 'POST', body: { data: [{ hash, audio_id: 0 }] }, cookie,
-    base: 'http://kmr.service.kugou.com', headers: { 'x-router': 'kmr.service.kugou.com' },
+  const request = buildKugouSongRequest(id)
+  return extractSongs(await requestKugou(request.path, {
+    method: request.method, params: request.params, cookie,
+    base: request.base, headers: request.headers,
   }))
 }
 

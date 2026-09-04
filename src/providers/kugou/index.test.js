@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import kugou, { buildKugouDevice, buildKugouLegacyMid, mapKugouSong, normalizeKugouId, buildKugouSignature, isKugouNonFatalError, buildKugouPlaylistRequest, isKugouShareCode, extractKugouShareCollectionId, buildKugouShareRequest, buildKugouShareKey } from './index.js'
+import kugou, { buildKugouDevice, buildKugouLegacyMid, mapKugouSong, normalizeKugouId, buildKugouSignature, buildKugouSongRequest, extractKugouSongs, isKugouNonFatalError, buildKugouPlaylistRequest, isKugouShareCode, extractKugouShareCollectionId, buildKugouShareRequest, buildKugouShareKey } from './index.js'
 
 describe('kugou provider contract', () => {
   it('registers the unified Meting capabilities', () => {
@@ -16,6 +16,13 @@ describe('kugou provider contract', () => {
     expect(normalizeKugouId('ABCDEF')).toEqual({ hash: 'abcdef', albumAudioId: 0 })
   })
 
+  it('builds the audio metadata request as a signed GET query', () => {
+    expect(buildKugouSongRequest('ABCDEF,123')).toMatchObject({
+      path: '/v1/audio/audio', method: 'GET', base: 'http://kmr.service.kugou.com',
+      params: { data: [{ hash: 'abcdef', audio_id: 123 }] },
+    })
+  })
+
   it('maps Kugou search records to the shared song shape', () => {
     expect(mapKugouSong({
       hash: 'ABC', songname: '测试', singername: '歌手', album_name: '专辑',
@@ -24,6 +31,12 @@ describe('kugou provider contract', () => {
       id: 'abc', title: '测试', author: '歌手', album: '专辑',
       pic: 'https://s1.example/400', duration: 215, url: 'abc', lrc: 'abc',
     })
+  })
+
+  it('extracts direct audio metadata arrays returned by Kugou', () => {
+    expect(extractKugouSongs({ data: [{ hash: 'ABCDEF', audio_name: '歌手 - 歌名' }] })).toMatchObject([
+      { id: 'abcdef', title: '歌名', author: '歌手' },
+    ])
   })
 
   it('maps the public Web search record shape', () => {
