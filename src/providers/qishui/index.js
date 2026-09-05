@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { preloadQishuiAudio } from './audio.js'
+import { normalizeLoudness } from '../../quality.js'
+import { loadQishuiAudio } from './audio.js'
 import { generateQishuiSignatureHeaders, isQishuiRemoteSignerConfigured } from './signature.js'
 
 const PUBLIC_SEARCH = 'https://api-vehicle.volcengine.com/v2/search/type'
@@ -27,6 +28,45 @@ const FEED_SESSION_LIMIT = 80
 const text = (value) => String(value ?? '').trim()
 const object = (...values) => values.find(value => value && typeof value === 'object' && !Array.isArray(value)) || {}
 const array = (...values) => values.find(Array.isArray) || []
+
+const loudnessFromNode = (node) => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return undefined
+    const hasPeak = node.peak !== undefined || node.volume_peak !== undefined
+    const hasGain = node.gain !== undefined || node.loudness !== undefined
+    if (!hasPeak || !hasGain) return undefined
+    return normalizeLoudness({
+        gain: node.gain ?? node.loudness,
+        peak: node.peak ?? node.volume_peak,
+    })
+}
+
+/** 从汽水原生响应中读取 VolumeInfo；不把智能音效链的 gain_db 当作歌曲响度。 */
+export const mapQishuiLoudness = (payload) => {
+    const seen = new Set()
+    const visit = (node, depth = 0) => {
+        if (!node || typeof node !== 'object' || depth > 8 || seen.has(node)) return undefined
+        seen.add(node)
+        if (Array.isArray(node)) {
+            for (const item of node.slice(0, 250)) {
+                const result = visit(item, depth + 1)
+                if (result) return result
+            }
+            return undefined
+        }
+        const direct = loudnessFromNode(node)
+        if (direct) return direct
+        for (const [key, value] of Object.entries(node).slice(0, 250)) {
+            if (/^(?:volume[_-]?info|loudness[_-]?info)$/i.test(key) && value && typeof value === 'object') {
+                const result = loudnessFromNode(value)
+                if (result) return result
+            }
+            const result = visit(value, depth + 1)
+            if (result) return result
+        }
+        return undefined
+    }
+    return visit(payload)
+}
 
 const feedSessionKey = (cookie, mode) => {
     const input = `${normalizeCookie(cookie)}|${text(mode).toUpperCase()}`
@@ -622,7 +662,9 @@ const get_pc_song_url = async (id, cookie, options = {}) => {
         hasTrackPlayer: Boolean(json?.track_player),
         hasVideoModel: Boolean(json?.track_player?.video_model),
     }))
-    return selectSongStream(collectStreams(json), options)
+    const stream = selectSongStream(collectStreams(json), options)
+    const loudness = mapQishuiLoudness(json)
+    return loudness && stream ? { ...stream, loudness } : stream
 }
 const get_media_player_song_url = async (id, cookie, options = {}) => {
     const json = await requestJson(urlWithParams(`${LUNA_API}/luna/media-player`, mediaPlayerAndroidParams(), { includeEmpty: true }), {
@@ -649,7 +691,9 @@ const get_media_player_song_url = async (id, cookie, options = {}) => {
         hasUrlPlayerInfo: Boolean(object(json?.player_infos?.[0], json?.playerInfos?.[0]).url_player_info),
         hasVideoModel: Boolean(object(json?.player_infos?.[0], json?.playerInfos?.[0]).video_model),
     }))
-    return selectSongStream(collectStreams(json), options)
+    const stream = selectSongStream(collectStreams(json), options)
+    const loudness = mapQishuiLoudness(json)
+    return loudness && stream ? { ...stream, loudness } : stream
 }
 
 const get_song_url = async (id, cookie, options = {}) => {
@@ -657,8 +701,9 @@ const get_song_url = async (id, cookie, options = {}) => {
     if (!text(cookie) || !isQishuiRemoteSignerConfigured(options.signerUrl)) return null
     try {
         const stream = await get_pc_song_url(id, cookie, options)
-        if (stream?.url && stream?.auth) {
-            preloadQishuiAudio(stream.url, stream.auth)
+        if (stream?.url && stream?.auth && !stream.loudness) {
+            const audio = await loadQishuiAudio(stream.url, stream.auth)
+            if (audio?.loudness) return { ...stream, loudness: audio.loudness }
         }
         return stream
     } catch (error) {

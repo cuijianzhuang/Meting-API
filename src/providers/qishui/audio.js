@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { Buffer } from 'buffer/index.js'
 import { get_public_base } from '../../util.js'
+import { analyzeQishuiAudioBuffer } from './loudness.js'
 
 const WEB_UA = 'LunaPC/3.3.0(359450208)'
 
@@ -325,7 +326,7 @@ const readDiskCache = async (key) => {
         const meta = JSON.parse(metaRaw)
         const buffer = await fs.readFile(paths.body)
         if (!buffer?.length || !meta?.contentType) return null
-        return { buffer, contentType: meta.contentType, at: meta.at || Date.now() }
+        return { buffer, contentType: meta.contentType, loudness: meta.loudness, at: meta.at || Date.now() }
     } catch {
         return null
     }
@@ -342,6 +343,7 @@ const writeDiskCache = async (key, value) => {
         await fs.writeFile(tmpBody, value.buffer)
         await fs.writeFile(tmpMeta, JSON.stringify({
             contentType: value.contentType,
+            loudness: value.loudness,
             at: Date.now(),
             bytes: value.buffer.length,
         }))
@@ -440,18 +442,27 @@ export const preloadQishuiAudio = (url, auth) => {
     })
 }
 
+const ensureQishuiLoudness = async (value) => {
+    if (value?.loudness) return value
+    const loudness = await analyzeQishuiAudioBuffer(value?.buffer, value?.contentType)
+    return loudness ? { ...value, loudness } : value
+}
+
 export const loadQishuiAudio = async (url, auth) => {
     const key = cacheKey(url, auth)
     const cached = cache.get(key)
     if (cached) {
         cached.at = Date.now()
-        return { ...cached, cacheHit: true, cacheSource: 'memory' }
+        const enriched = await ensureQishuiLoudness(cached)
+        if (enriched !== cached) remember(key, enriched)
+        return { ...enriched, cacheHit: true, cacheSource: 'memory' }
     }
 
     const diskCached = await readDiskCache(key)
     if (diskCached) {
-        remember(key, diskCached, { persistDisk: false })
-        return { ...diskCached, cacheHit: true, cacheSource: 'disk' }
+        const enriched = await ensureQishuiLoudness(diskCached)
+        remember(key, enriched, { persistDisk: Boolean(enriched.loudness) })
+        return { ...enriched, cacheHit: true, cacheSource: 'disk' }
     }
 
     if (inflightLoads.has(key)) {
@@ -468,8 +479,9 @@ export const loadQishuiAudio = async (url, auth) => {
             buffer: raw,
             contentType: response.headers.get('content-type') || 'audio/mp4',
         }
-        remember(key, result)
-        return { ...result, cacheHit: false, cacheSource: 'cdn' }
+        const enriched = await ensureQishuiLoudness(result)
+        remember(key, enriched)
+        return { ...enriched, cacheHit: false, cacheSource: 'cdn' }
     })()
 
     inflightLoads.set(key, task)

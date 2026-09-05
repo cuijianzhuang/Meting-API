@@ -1,6 +1,6 @@
 {
   "name": "meting-backend-js",
-  "version": "3.3.2",
+  "version": "3.3.3",
   "description": "",
   "main": "node.js",
   "scripts": {
@@ -27,6 +27,8 @@
     "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
     "@esbuild-plugins/node-modules-polyfill": "^0.2.2",
     "@hono/node-server": "^1.8.2",
+    "@wasm-audio-decoders/aac": "^0.0.1",
+    "@wasm-audio-decoders/flac": "^0.2.11",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.0",
     "esbuild": "0.17.5",
