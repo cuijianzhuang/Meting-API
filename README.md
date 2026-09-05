@@ -1,48 +1,103 @@
-# Meting-API
+<div align="center">
 
-多平台音乐 API · 网易云 / QQ / 汽水 / 酷狗 · Cookie 管理 · 会员音质 · 私人漫游
+# 🎵 OpenMusic-Meting-API
 
-**v3.3.0** · Node ≥ 18 · [Docker](https://hub.docker.com/r/w3126197382/meting-api) · MIT
+<p><strong>统一的多平台音乐 API 服务</strong></p>
 
----
+<p>
+  <a href="https://github.com/qq01-hub/Meting-API/releases"><img src="https://img.shields.io/github/v/release/qq01-hub/Meting-API?style=flat-square&color=7c3aed" alt="Release"></a>
+  <a href="https://github.com/qq01-hub/Meting-API/stargazers"><img src="https://img.shields.io/github/stars/qq01-hub/Meting-API?style=flat-square&color=f59e0b" alt="Stars"></a>
+  <a href="https://github.com/qq01-hub/Meting-API/blob/main/LICENSE"><img src="https://img.shields.io/github/license/qq01-hub/Meting-API?style=flat-square&color=10b981" alt="License"></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js"></a>
+  <a href="https://hub.docker.com/r/w3126197382/meting-api"><img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker"></a>
+</p>
 
-## 快速开始
+<p>
+  网易云音乐 · QQ 音乐 · 汽水音乐 · 酷狗音乐<br>
+  Cookie 管理 · 会员音质 · 私人漫游 · 管理后台
+</p>
+
+<p>
+  <a href="#-快速开始">快速开始</a> ·
+  <a href="#-api-一览">API 一览</a> ·
+  <a href="#-使用示例">使用示例</a> ·
+  <a href="#-管理后台">管理后台</a> ·
+  <a href="#-常见问题">FAQ</a>
+</p>
+
+</div>
+
+> **OpenMusic-Meting-API** 是一个基于 Node.js 的多平台音乐 API 服务，提供歌曲、歌单、搜索、歌词、封面、播放地址和私人漫游等能力。
+
+## ✨ 项目亮点
+
+| 能力 | 说明 |
+|:---|:---|
+| 🎼 多平台聚合 | 统一接入网易云、QQ、汽水、酷狗音乐 |
+| 🔍 丰富接口 | 支持歌曲、歌单、歌手、搜索、电台、歌词、封面与播放地址 |
+| 🎧 音质选择 | 支持标准、极高、无损、Hi-Res、母带等多档音质 |
+| 🌊 私人漫游 | 支持网易云、QQ、汽水和酷狗的推荐内容获取 |
+| 🛠️ 管理后台 | Cookie 管理、扫码登录、自动续期、定时监测、Webhook、2FA 与多用户 |
+| 🚀 灵活部署 | 支持 Node.js、Deno、Docker 与 Vercel 等部署方式 |
+
+## 🚀 快速开始
+
+### 环境要求
+
+- Node.js `>= 18`
+- npm
+
+### 本地运行
 
 ```bash
 git clone https://github.com/qq01-hub/Meting-API.git
-cd Meting-API && npm install && npm run start:node
+cd Meting-API
+npm install
+npm run start:node
 ```
 
-| 入口 | 地址 |
-|------|------|
-| API 文档 | `http://localhost:3000` |
-| 在线测试 | `http://localhost:3000/test` |
-| 管理后台 | `http://localhost:3000/admin`（默认 `admin` / `admin123`，请立刻改密） |
+启动后可访问：
+
+| 服务 | 地址 |
+|:---|:---|
+| API 文档 | [`http://localhost:3000`](http://localhost:3000) |
+| 在线测试 | [`http://localhost:3000/test`](http://localhost:3000/test) |
+| 管理后台 | [`http://localhost:3000/admin`](http://localhost:3000/admin) |
+
+> 管理后台默认账号为 `admin` / `admin123`，首次登录后请立即修改密码。
+
+### Docker 部署
 
 ```bash
-docker run -d --name meting -p 3000:3000 -v ./data:/app/data w3126197382/meting-api:latest
+docker run -d \
+  --name openmusic-meting-api \
+  -p 3000:3000 \
+  -v ./data:/app/data \
+  w3126197382/meting-api:latest
 ```
 
----
+## 📡 API 一览
 
-## API 一览
+### 基础格式
 
-```
+```http
 GET /api?server={平台}&type={类型}&id={资源}&quality={音质}
 ```
 
-| 参数 | 默认 | 说明 |
-|------|------|------|
+### 请求参数
+
+| 参数 | 默认值 | 说明 |
+|:---|:---:|:---|
 | `server` | `netease` | `netease` · `tencent` · `qishui` · `kugou` |
-| `type` | `playlist` | 见下表 |
+| `type` | `playlist` | 接口类型，详见下方能力矩阵 |
 | `id` | — | 歌曲 / 歌单 ID，或搜索关键词 / 漫游模式 |
-| `quality` | `standard` | 仅 `type=url` |
-| `redirect` | — | `1` 时 `url`/`pic` 走 302 |
+| `quality` | `standard` | 播放地址接口（`type=url`）的音质参数 |
+| `redirect` | — | 设置为 `1` 时，`url` / `pic` 通过 302 重定向返回 |
 
 ### 能力矩阵
 
-| type | id | 网易 | QQ | 汽水 | 酷狗 |
-|------|----|:---:|:--:|:---:|:---:|
+| `type` | `id` | 网易云 | QQ | 汽水 | 酷狗 |
+|:---|:---|:---:|:---:|:---:|:---:|
 | `song` | 歌曲 ID | ✅ | ✅ | ✅ | ✅ |
 | `playlist` | 歌单 ID | ✅ | ✅ | ✅ | ✅ |
 | `artist` | 歌手 ID | ✅ | — | — | — |
@@ -50,25 +105,26 @@ GET /api?server={平台}&type={类型}&id={资源}&quality={音质}
 | `search_playlist` | 歌单关键词（歌单名 / 创建者） | ✅ | ✅ | — | ✅ |
 | `search_dj` | 电台关键词（节目 / 主播） | ✅ | — | — | — |
 | `dj` / `dj_detail` / `djprogram` / `dj_hot` | 电台相关 | ✅ | — | — | — |
-| `fm` | 见下方 | ✅ | ✅ | ✅ | ✅ |
+| `fm` | 私人漫游 | ✅ | ✅ | ✅ | ✅ |
 | `url` / `lrc` / `pic` | 歌曲 ID | ✅ | ✅ | ✅ | ✅ |
 
 ### 私人漫游 `fm`
 
-| 平台 | 模式 | 说明 |
-|------|------|------|
+| 平台 | 支持模式 | 说明 |
+|:---|:---|:---|
 | 网易云 | `DEFAULT` · `FAMILIAR` · `EXPLORE` · `aidj` · `SCENE_RCMD[:子模式]` | 子模式：`EXERCISE` / `FOCUS` / `NIGHT_EMO` |
-| QQ 音乐 | **不支持传模式** | 固定猜你喜欢，`id` 无效；需登录 Cookie |
-| 汽水 | 可空 / 平台自有偏好 | 需登录 Cookie |
+| QQ 音乐 | 不支持传模式 | 固定猜你喜欢，`id` 无效；需要登录 Cookie |
+| 汽水音乐 | 可空 / 平台自有偏好 | 需要登录 Cookie |
+| 酷狗音乐 | 平台自有偏好 | 以平台返回结果为准 |
 
-播放地址一律再请求 `type=url`。
+> 播放地址请统一通过 `type=url` 再次请求获取。
 
 ### 音质 `quality`
 
-会员不足或曲目无该档时自动降级；响应里的 `quality` 是**实际档位**中文名。
+会员权限不足或曲目不提供对应档位时，接口会自动降级；响应中的 `quality` 为实际返回档位的中文名称。
 
-| quality | 网易 | QQ | 汽水 |
-|---------|------|----|------|
+| `quality` | 网易云 | QQ 音乐 | 汽水音乐 |
+|:---|:---|:---|:---|
 | `128` / `standard` | 标准 | 标准 | 标准 |
 | `higher` | 较高 | — | — |
 | `320` / `exhigh` | 极高 · VIP | HQ · VIP | 极高 · VIP |
@@ -78,32 +134,37 @@ GET /api?server={平台}&type={类型}&id={资源}&quality={音质}
 | `sky` / `jymaster` / `dolby` | 环绕 / 母带 / 杜比 · SVIP | — | — |
 | `atmos` | — | 臻品全景声 · 超会 | 全景 · SVIP |
 | `master` | — | 臻品母带 · 超会 | — |
-| `viper_atmos` / `atmos` | — | — | 蝰蛇全景声2.0 · SVIP |
+| `viper_atmos` / `atmos` | — | — | 蝰蛇全景声 2.0 · SVIP |
 | `viper_tape` | — | — | 蝰蛇母带音质 · SVIP |
 | `viper_clear` | — | — | 蝰蛇超清音质 · SVIP |
-| `viper_hifi` | — | — | 蝰蛇HiFi音质 · SVIP |
+| `viper_hifi` | — | — | 蝰蛇 HiFi 音质 · SVIP |
 
-> 汽水：`studio` / `atmos` / `flac`·`lossless` 需 SVIP；`320`·`exhigh` 需 VIP。酷狗：`320` / `flac`·`lossless` / `hires` 需 VIP；蝰蛇音质需 SVIP。QQ 超会对应文档里的 SVIP 档。
+> 汽水音乐：`studio` / `atmos` / `flac` / `lossless` 需要 SVIP，`320` / `exhigh` 需要 VIP。酷狗音乐：`320` / `flac` / `lossless` / `hires` 需要 VIP，蝰蛇音质需要 SVIP。QQ 音乐的“超会”对应文档中的 SVIP 档位。
 
----
+## 🧪 使用示例
 
-## 示例
+### 歌曲、歌单与搜索
 
-```bash
-# 歌单 / 单曲 / 搜索
+```http
 GET /api?server=netease&type=playlist&id=6907557348
 GET /api?server=tencent&type=song&id=0010BrWk2SucQr
 GET /api?server=qishui&type=search&id=风筝误
 GET /api?server=kugou&type=search&id=情歌
 GET /api?server=kugou&type=search_playlist&id=流行
+```
 
-# 漫游
+### 私人漫游
+
+```http
 GET /api?server=netease&type=fm&id=FAMILIAR
 GET /api?server=tencent&type=fm
 GET /api?server=qishui&type=fm
 GET /api?server=kugou&type=fm
+```
 
-# 媒体
+### 播放地址、歌词与封面
+
+```http
 GET /api?server=netease&type=url&id=254059&quality=lossless
 GET /api?server=tencent&type=url&id=0010BrWk2SucQr&quality=master&redirect=1
 GET /api?server=tencent&type=lrc&id=0010BrWk2SucQr
@@ -113,13 +174,14 @@ GET /api?server=kugou&type=lrc&id=72db6da75ffe23a3a6361bdb8f44d5f4
 GET /api?server=kugou&type=pic&id=72db6da75ffe23a3a6361bdb8f44d5f4
 ```
 
-**响应**
+### 响应说明
 
-- 曲目类 → JSON 数组 `{ title, author, url, pic, lrc, ... }`
-- `url` → `{ "url", "quality", "duration", "loudness" }`；加 `redirect=1` 则 302
-  - `duration`：音频时长，单位为秒，例如 `260` 即 4 分 20 秒。
+- 曲目类接口：返回 JSON 数组，例如 `{ title, author, url, pic, lrc, ... }`
+- `url`：返回 `{ url, quality, duration, loudness }`；设置 `redirect=1` 时返回 302
+  - `duration`：音频时长，单位为秒，例如 `260` 即 4 分 20 秒
   - `loudness`：标准化响度信息。酷狗会将播放响应的 `volume` 映射为 `gain`、`volume_peak` 映射为 `peak`；平台未提供可用数据时为 `null`。
-- `pic` → 302 · `lrc` → 纯文本
+- `pic`：返回 302
+- `lrc`：返回纯文本歌词
 
 ### MetingJS
 
@@ -128,30 +190,68 @@ GET /api?server=kugou&type=pic&id=72db6da75ffe23a3a6361bdb8f44d5f4
   var meting_api = 'https://你的域名/api?server=:server&type=:type&id=:id&auth=:auth&r=:r&redirect=1'
 </script>
 ```
-## 管理后台
 
-`/{ADMIN_PATH}` · Cookie 增删验证 · QQ 自动续期 · 汽水扫码 · 定时监测 · Webhook · 2FA · 多用户
+## 🛠️ 管理后台
 
-**Cookie 要点**
+访问 `/{ADMIN_PATH}`，可使用以下功能：
 
-- 网易：浏览器复制整段 Cookie
-- QQ：至少 `uin` + `qqmusic_key`；含 `psrf_qqrefresh_token` 可自动续期
-- 汽水：需 `sessionid` 等登录字段；无公开 refresh，靠监测 + 重新扫码（同备注会覆盖）
-- 酷狗：后台 Cookie 管理页可直接使用“酷狗扫码登录”，成功后自动保存 API 凭证；手动添加时需同时包含 `token` 与 `userid`，建议保留 `vip_token`、`vip_type`、`dfid`、`KUGOU_API_MID`。`320` / 无损为 VIP，Hi-Res / 全景声 / 母带为 SVIP，后台会分开显示权益。
+- Cookie 增删与有效性验证
+- QQ 音乐自动续期
+- 汽水音乐扫码登录
+- 酷狗扫码登录与 API 凭证管理
+- 定时监测与 Webhook
+- 2FA 与多用户管理
 
-认证头：`X-Auth-Username` + `X-Auth-Token`（管理 API）。
+### Cookie 配置要点
 
----
+| 平台 | 配置建议 |
+|:---|:---|
+| 网易云音乐 | 在浏览器中复制完整 Cookie |
+| QQ 音乐 | 至少包含 `uin` + `qqmusic_key`；包含 `psrf_qqrefresh_token` 可自动续期 |
+| 汽水音乐 | 需要 `sessionid` 等登录字段；无公开 refresh，过期后重新扫码 |
+| 酷狗音乐 | 推荐使用后台“酷狗扫码登录”；手动添加时需同时包含 `token` 与 `userid` |
 
-## FAQ
+管理 API 认证头：
 
-**高音质被降级？** Cookie 会员等级不够，或曲目本身没有该档。看返回的 `quality`。
+```http
+X-Auth-Username: <username>
+X-Auth-Token: <token>
+```
 
-**QQ 播不了？** 客户端需能访问国内音源；检查 VIP Cookie；尽量带 refresh_token。
+## ❓ 常见问题
 
-**Cookie 刷新失败？** 可能已彻底过期（约 90 天），重新登录。
+<details>
+<summary><strong>高音质为什么被降级？</strong></summary>
 
-**忘了后台路径？** 看 `DATA_DIR/config.json` 的 `adminPath`，或设 `ADMIN_PATH`。
+Cookie 的会员等级不足，或曲目本身没有对应档位。请查看响应中的 `quality` 字段。
 
----
-License: MIT
+</details>
+
+<details>
+<summary><strong>QQ 音乐无法播放怎么办？</strong></summary>
+
+请确认客户端能够访问国内音源，并检查 VIP Cookie 是否有效；建议尽量携带 `refresh_token`。
+
+</details>
+
+<details>
+<summary><strong>Cookie 刷新失败怎么办？</strong></summary>
+
+Cookie 可能已经彻底过期（约 90 天），请重新登录或扫码获取。
+
+</details>
+
+<details>
+<summary><strong>忘记管理后台路径怎么办？</strong></summary>
+
+查看 `DATA_DIR/config.json` 中的 `adminPath`，或通过环境变量 `ADMIN_PATH` 自定义路径。
+
+</details>
+
+## 📄 许可证
+
+本项目基于 [MIT License](LICENSE) 开源。
+
+<div align="center">
+  <sub>OpenMusic-Meting-API · 让音乐接口接入更简单</sub>
+</div>
