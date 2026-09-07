@@ -604,6 +604,73 @@ class DataStore {
         return selectActiveCookie(cookies)
     }
 
+    /**
+     * 根据音质要求智能选择 cookie
+     * @param {string} platform - 平台名称
+     * @param {string} quality - 音质等级
+     * @returns {object|null} - 选中的 cookie 或 null
+     */
+    getActiveCookieForQuality(platform, quality = 'standard') {
+        const cookies = this.getCookies(platform).filter(c => c.isActive && c.isValid !== false)
+        if (cookies.length === 0) return null
+
+        // 判断是否需要 SVIP
+        const requiresSvip = this.isQualityRequiresSvip(quality, platform)
+
+        // 如果需要 SVIP，优先筛选出 SVIP 账号
+        let eligibleCookies = cookies
+        if (requiresSvip) {
+            const svipCookies = cookies.filter(c => cookieHasSvip(c))
+            if (svipCookies.length > 0) {
+                eligibleCookies = svipCookies
+            }
+            // 如果没有 SVIP 账号，仍然使用所有可用账号（会自动降级）
+        }
+
+        // 如果只有一个可用 cookie，直接返回
+        if (eligibleCookies.length === 1) {
+            return eligibleCookies[0]
+        }
+
+        // 多个可用 cookie 时，随机选择一个
+        const randomIndex = Math.floor(Math.random() * eligibleCookies.length)
+        return eligibleCookies[randomIndex]
+    }
+
+    /**
+     * 判断指定音质是否需要 SVIP
+     * @param {string} quality - 音质等级
+     * @param {string} platform - 平台名称
+     * @returns {boolean}
+     */
+    isQualityRequiresSvip(quality, platform) {
+        if (!quality) return false
+
+        const qualityLower = String(quality).toLowerCase()
+
+        // 网易云音乐 SVIP 音质
+        if (platform === 'netease') {
+            return ['sky', 'jymaster', 'dolby'].includes(qualityLower)
+        }
+
+        // QQ 音乐 SVIP（超级会员）音质
+        if (platform === 'tencent') {
+            return ['atmos', 'master'].includes(qualityLower)
+        }
+
+        // 汽水音乐 SVIP 音质
+        if (platform === 'qishui') {
+            return ['flac', 'lossless', 'studio', 'atmos'].includes(qualityLower)
+        }
+
+        // 酷狗音乐 SVIP 音质
+        if (platform === 'kugou') {
+            return ['hires', 'atmos', 'master', 'viper_atmos', 'viper_tape', 'viper_clear', 'viper_hifi', 'acappella', 'multitrack'].includes(qualityLower)
+        }
+
+        return false
+    }
+
     isAccountLocked(username) {
         const lockInfo = this.lockedAccounts.get(username)
         if (!lockInfo) return false

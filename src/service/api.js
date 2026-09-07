@@ -26,7 +26,15 @@ export default async (ctx) => {
     }
 
     let cookie = ''
-    const storedCookie = store.getActiveCookie(server)
+    let storedCookie = null
+
+    // 根据音质要求智能选择 cookie（随机选择 + SVIP 优先）
+    if (type === 'url' && quality) {
+        storedCookie = store.getActiveCookieForQuality(server, quality)
+    } else {
+        storedCookie = store.getActiveCookie(server)
+    }
+
     if (storedCookie) {
         cookie = storedCookie.cookie
     }
