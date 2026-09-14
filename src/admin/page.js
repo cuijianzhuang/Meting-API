@@ -592,6 +592,27 @@ const getAdminHtml = () => `<!DOCTYPE html>
             line-height: 1.6;
             text-align: left;
         }
+        .qr-verify-frame {
+            display: none;
+            margin-top: 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            background: #fff;
+        }
+        .qr-verify-frame.show { display: block; }
+        .qr-verify-frame .qr-verify-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+            background: var(--border-light);
+        }
+        .qr-verify-frame iframe { display: block; width: 100%; height: 380px; border: 0; }
         .qr-link-btn {
             background: none;
             border: none;
@@ -841,6 +862,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
             .qr-platform-tabs { gap: 4px; padding: 5px; }
             .qr-platform-tab { padding: 8px 4px; font-size: 12px; }
             .qr-stage { width: 190px; height: 190px; }
+            .qr-verify-frame iframe { height: 320px; }
             .table th, .table td { padding: 10px 10px; font-size: 12px; }
             .cookie-preview { max-width: 100px; }
             .actions { flex-wrap: wrap; }
@@ -1314,6 +1336,13 @@ const getAdminHtml = () => `<!DOCTYPE html>
                     <p class="qr-status" id="qrStatus">正在初始化…</p>
                     <div class="qr-hint" id="qrHint"></div>
                     <button type="button" class="qr-link-btn" id="qrRefreshBtn" style="margin-top:12px;" onclick="restartQrLogin()">刷新二维码</button>
+                </div>
+                <div class="qr-verify-frame" id="qrVerifyFrame">
+                    <div class="qr-verify-head">
+                        <span>汽水安全验证</span>
+                        <button type="button" class="qr-link-btn" onclick="closeQrVerifyFrame()">关闭验证窗口</button>
+                    </div>
+                    <iframe id="qrVerifyIframe" title="汽水安全验证" sandbox="allow-scripts"></iframe>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1831,7 +1860,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
                 instruction: '请使用已登录的汽水音乐 App 扫码',
                 waiting: '等待汽水音乐 App 扫码…',
                 scanHint: '已扫码，请在汽水音乐 App 上确认',
-                hint: '汽水需要本机 Chrome/Chromium 生成签名。',
+                hint: '汽水需要本机 Chrome/Chromium 生成签名；若触发安全验证，弹窗内会显示验证窗口。',
             },
         };
 
@@ -1841,6 +1870,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
         let qrBusy = false;
         let qrRunId = 0;
         let qrPhase = 'waiting';
+        let qrVerifySubmitted = false;
 
         const qrEl = (id) => document.getElementById(id);
 
@@ -1904,6 +1934,28 @@ const getAdminHtml = () => `<!DOCTYPE html>
             qrPollTimer = null;
         };
 
+        const closeQrVerifyFrame = () => {
+            const frame = qrEl('qrVerifyFrame');
+            frame.classList.remove('show');
+            qrEl('qrVerifyIframe').src = 'about:blank';
+        };
+
+        const openQrVerifyFrame = (key) => {
+            // security_host.html 把 bridgeRoot 当作路径前缀拼接：
+            // bridgeRoot + /start、/request、/complete，
+            // 因此这里传 /admin/qr/qishui/verify，对齐后端三条代理路由。
+            const url = '/admin/qr/qishui/security/security_host.html'
+                + '?key=' + encodeURIComponent(key)
+                + '&bridgeRoot=' + encodeURIComponent('/admin/qr/qishui/verify');
+            qrEl('qrVerifyIframe').src = url;
+            qrEl('qrVerifyFrame').classList.add('show');
+        };
+
+        const resetQrVerify = () => {
+            qrVerifySubmitted = false;
+            closeQrVerifyFrame();
+        };
+
         const applyQrPlatformChrome = () => {
             const meta = QR_PLATFORMS[qrPlatform];
             qrEl('qrInstruction').textContent = meta.instruction;
@@ -1964,6 +2016,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
             const status = String(data.status || '').toLowerCase();
 
             if (status === 'confirmed') {
+                resetQrVerify();
                 await finishQrLogin(platform, data.cookie);
                 return;
             }
@@ -1971,7 +2024,8 @@ const getAdminHtml = () => `<!DOCTYPE html>
             if (status === 'second_verify') {
                 qrPhase = 'scanned';
                 setQrDot(platform, 'busy');
-                setQrStatus('该账号需要汽水二次安全验证，请在汽水 App 或网页端完成后再试');
+                setQrStatus(qrVerifySubmitted ? '汽水验证中，请稍候…' : '请在弹出的验证窗口完成身份验证');
+                if (!qrEl('qrVerifyFrame').classList.contains('show')) openQrVerifyFrame(qrSessionKey);
                 return;
             }
 
@@ -2009,6 +2063,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
             const platform = qrPlatform;
             const meta = QR_PLATFORMS[platform];
             stopQrPolling();
+            resetQrVerify();
 
             qrSessionKey = '';
             qrPhase = 'waiting';
@@ -2052,11 +2107,24 @@ const getAdminHtml = () => `<!DOCTYPE html>
             startQrLogin();
         };
 
+        const handleQrVerifyMessage = (event) => {
+            // sandbox="allow-scripts" 的 iframe 是 opaque origin，
+            // event.origin 会是字符串 "null"，不能与 location.origin 比较；
+            // 因此以 event.source 严格对应到验证 iframe 为准。
+            if (event.data?.type !== 'qishui-second-verify-complete') return;
+            if (event.source !== qrEl('qrVerifyIframe').contentWindow) return;
+            qrVerifySubmitted = true;
+            setQrStatus('验证已提交，正在确认登录…');
+            pollQrLogin();
+        };
+        window.addEventListener('message', handleQrVerifyMessage);
+
         const closeQrLoginModal = () => {
             qrRunId += 1;
             stopQrPolling();
             qrSessionKey = '';
             qrBusy = false;
+            resetQrVerify();
             closeModal('qrLoginModal');
         };
 

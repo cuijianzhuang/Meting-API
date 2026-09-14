@@ -300,6 +300,8 @@ export const checkQishuiQr = async (token) => {
     const key = text(token)
     const session = sessions.get(key)
     if (!session) throw qrError('汽水二维码会话已过期，请重新生成', 'QISHUI_QR_SESSION_EXPIRED')
+    // 二次验证完成后的确认结果需要被前端轮询领走，不能再次发起网络校验覆盖它。
+    if (session.lastResult?.status === 'confirmed') return session.lastResult
     if (session.cooldownUntil > Date.now() && session.lastResult) {
         return session.lastResult
     }
@@ -449,6 +451,17 @@ export const checkQishuiQr = async (token) => {
 
 export const getQishuiSecondVerifyAsset = name => readQishuiSecurityAsset(name)
 
+/**
+ * 判断二维码会话是否仍然存活。
+ * 汽水二次验证的 iframe 无法携带后台鉴权请求头，因此这几条专属路由
+ * 改用会话 token 作为能力凭证：token 本身由后台创建二维码时下发，
+ * 且随会话过期自动失效，无法被外部猜测或重放。
+ */
+export const hasQishuiQrSession = token => {
+    cleanupSessions()
+    return sessions.has(text(token))
+}
+
 export const requestQishuiSecondVerify = async (token, request) => {
     const session = sessions.get(text(token))
     if (!session) throw qrError('汽水二维码会话已过期，请重新生成', 'QISHUI_QR_SESSION_EXPIRED')
@@ -498,7 +511,11 @@ export const completeQishuiSecondVerify = async (token) => {
         return { platform: 'qishui', status: 'waiting', loggedIn: false, cookie: '', message: text(data.description || payload?.message) || '验证已提交，等待汽水确认' }
     }
     const result = { platform: 'qishui', status: 'confirmed', loggedIn: true, cookie: session.cookie, message: '登录成功' }
-    sessions.delete(key)
+    // 与网易云、酷狗一致：保留确认结果让前端轮询领取 Cookie。
+    // 立即删除会话会让前端的下一次 /qr/check 报“会话已过期”，丢失刚拿到的登录态。
+    // 签名浏览器上下文可以立刻释放，会话对象由创建时的清理定时器回收。
+    session.lastResult = result
+    session.lastCheckAt = Date.now()
     void closeQishuiSignerSession(session.sessionKey)
     return result
 }
