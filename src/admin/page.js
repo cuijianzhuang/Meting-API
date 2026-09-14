@@ -472,6 +472,138 @@ const getAdminHtml = () => `<!DOCTYPE html>
             border-radius: 0 0 var(--radius-lg) var(--radius-lg);
         }
 
+        /* 扫码登录弹窗 */
+        .qr-platform-tabs {
+            display: flex;
+            gap: 6px;
+            padding: 6px;
+            margin-bottom: 18px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+        .qr-platform-tab {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 9px 6px;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+        .qr-platform-tab:hover:not(:disabled) { background: rgba(15,23,42,0.04); color: var(--text); }
+        .qr-platform-tab.active {
+            background: var(--bg-card);
+            color: var(--primary);
+            box-shadow: var(--shadow-sm);
+        }
+        .qr-platform-tab:disabled { opacity: 0.45; cursor: not-allowed; }
+        .qr-platform-tab .qr-tab-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .qr-platform-tab .qr-tab-dot.busy { background: var(--warning); animation: pulseDot 1.2s ease-in-out infinite; }
+        .qr-platform-tab .qr-tab-dot.ok { background: var(--success); }
+        .qr-platform-tab .qr-tab-dot.err { background: var(--danger); }
+
+        .qr-panel { text-align: center; }
+        .qr-stage {
+            position: relative;
+            width: 220px;
+            height: 220px;
+            margin: 0 auto 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        .qr-stage img { width: 100%; height: 100%; object-fit: contain; }
+        .qr-stage .qr-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .qr-spinner {
+            width: 26px;
+            height: 26px;
+            border: 2.5px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .qr-stage .qr-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: rgba(255,255,255,0.94);
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            padding: 16px;
+        }
+        .qr-stage .qr-overlay.expired { color: var(--danger); }
+        .qr-stage .qr-overlay .qr-expired-icon { font-size: 28px; }
+        .qr-instruction {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin: 0 0 6px;
+        }
+        .qr-status {
+            font-size: 12px;
+            color: var(--text-secondary);
+            min-height: 18px;
+            margin: 0;
+            line-height: 1.5;
+        }
+        .qr-status.error { color: var(--danger); }
+        .qr-status.success { color: var(--success); font-weight: 600; }
+        .qr-hint {
+            margin-top: 16px;
+            padding: 10px 12px;
+            background: var(--primary-bg);
+            border: 1px solid var(--primary-border);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            text-align: left;
+        }
+        .qr-link-btn {
+            background: none;
+            border: none;
+            font-family: inherit;
+            font-size: 12px;
+            color: var(--text-muted);
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+        }
+        .qr-link-btn:hover { color: var(--primary); }
+
         .status-dot {
             display: inline-block;
             width: 8px;
@@ -639,6 +771,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
         @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--success-bg); } 50% { box-shadow: 0 0 0 6px rgba(16,185,129,0.1); } }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         @keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
         @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
 
@@ -705,6 +838,9 @@ const getAdminHtml = () => `<!DOCTYPE html>
             .modal-body { padding: 16px; }
             .modal-header { padding: 16px; }
             .modal-footer { padding: 12px 16px; }
+            .qr-platform-tabs { gap: 4px; padding: 5px; }
+            .qr-platform-tab { padding: 8px 4px; font-size: 12px; }
+            .qr-stage { width: 190px; height: 190px; }
             .table th, .table td { padding: 10px 10px; font-size: 12px; }
             .cookie-preview { max-width: 100px; }
             .actions { flex-wrap: wrap; }
@@ -839,7 +975,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
                         <div class="card-header">
                             <span class="card-title">Cookie列表</span>
                             <div class="actions">
-                                <button class="btn btn-default btn-sm" onclick="showKugouQrLoginModal()">酷狗扫码登录</button>
+                                <button class="btn btn-default btn-sm" onclick="showQrLoginModal()">扫码登录</button>
                                 <button class="btn btn-primary btn-sm" onclick="showAddCookieModal()">+ 添加Cookie</button>
                             </div>
                         </div>
@@ -1155,19 +1291,33 @@ const getAdminHtml = () => `<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="modal" id="kugouQrModal">
-        <div class="modal-content" style="max-width:420px;">
+    <div class="modal" id="qrLoginModal">
+        <div class="modal-content" style="max-width:440px;">
             <div class="modal-header">
-                <h3>酷狗音乐扫码登录</h3>
-                <button class="modal-close" onclick="closeKugouQrLoginModal()">&times;</button>
+                <h3>扫码登录</h3>
+                <button class="modal-close" onclick="closeQrLoginModal()">&times;</button>
             </div>
-            <div class="modal-body" style="text-align:center;">
-                <p id="kugouQrMessage" style="color:var(--text-secondary);font-size:13px;margin:0 0 14px;">正在生成二维码...</p>
-                <img id="kugouQrImage" alt="酷狗音乐登录二维码" style="display:none;width:220px;height:220px;max-width:100%;object-fit:contain;background:#fff;">
+            <div class="modal-body">
+                <div class="qr-platform-tabs" role="tablist" aria-label="选择音乐平台">
+                    <button type="button" class="qr-platform-tab" role="tab" data-platform="netease" onclick="switchQrPlatform('netease')"><span>网易云</span><span class="qr-tab-dot"></span></button>
+                    <button type="button" class="qr-platform-tab" role="tab" data-platform="tencent" onclick="switchQrPlatform('tencent')"><span>QQ 音乐</span><span class="qr-tab-dot"></span></button>
+                    <button type="button" class="qr-platform-tab" role="tab" data-platform="kugou" onclick="switchQrPlatform('kugou')"><span>酷狗</span><span class="qr-tab-dot"></span></button>
+                    <button type="button" class="qr-platform-tab" role="tab" data-platform="qishui" onclick="switchQrPlatform('qishui')"><span>汽水</span><span class="qr-tab-dot"></span></button>
+                </div>
+                <div class="qr-panel" id="qrPanel">
+                    <div class="qr-stage" id="qrStage">
+                        <div class="qr-placeholder" id="qrPlaceholder"><div class="qr-spinner"></div><span>正在生成二维码…</span></div>
+                        <img id="qrImage" alt="登录二维码" style="display:none;">
+                        <div class="qr-overlay" id="qrOverlay" style="display:none;"></div>
+                    </div>
+                    <p class="qr-instruction" id="qrInstruction">请使用手机 App 扫码</p>
+                    <p class="qr-status" id="qrStatus">正在初始化…</p>
+                    <div class="qr-hint" id="qrHint"></div>
+                    <button type="button" class="qr-link-btn" id="qrRefreshBtn" style="margin-top:12px;" onclick="restartQrLogin()">刷新二维码</button>
+                </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-default" onclick="closeKugouQrLoginModal()">取消</button>
-                <button type="button" class="btn btn-primary" onclick="startKugouQrLogin()">刷新二维码</button>
+                <button type="button" class="btn btn-default" onclick="closeQrLoginModal()">关闭</button>
             </div>
         </div>
     </div>
@@ -1649,64 +1799,270 @@ const getAdminHtml = () => `<!DOCTYPE html>
             else showToast(res?.error || '发送失败', 'error');
         };
 
-        let kugouQrPollTimer = null;
-        let kugouQrSessionKey = '';
-
-        const stopKugouQrPolling = () => {
-            if (kugouQrPollTimer) clearInterval(kugouQrPollTimer);
-            kugouQrPollTimer = null;
+        // ===== 扫码登录（四平台统一）=====
+        const QR_PLATFORMS = {
+            netease: {
+                label: '网易云音乐',
+                note: '网易云扫码登录',
+                instruction: '请使用网易云音乐 App 扫码',
+                waiting: '等待网易云音乐 App 扫码…',
+                scanHint: '扫码后请在手机上确认登录',
+                hint: '登录凭证仅用于获取歌曲与歌词，保存在本机数据目录中。',
+            },
+            tencent: {
+                label: 'QQ 音乐',
+                note: 'QQ音乐扫码登录',
+                instruction: '请使用 QQ 音乐 App 扫码',
+                waiting: '等待 QQ 音乐 App 扫码…',
+                scanHint: '已扫码，请在 QQ 音乐 App 上确认',
+                hint: 'App 扫码会携带设备指纹，可自动续期并稳定识别会员权益；授权换 Cookie 较慢，请耐心等待。',
+            },
+            kugou: {
+                label: '酷狗音乐',
+                note: '酷狗扫码登录',
+                instruction: '请使用酷狗音乐 App 扫码',
+                waiting: '等待酷狗音乐 App 扫码…',
+                scanHint: '已扫码，请在酷狗音乐 App 上确认',
+                hint: '扫码后将保存 token、userid 及设备标识，用于 VIP 音质校验。',
+            },
+            qishui: {
+                label: '汽水音乐',
+                note: '汽水扫码登录',
+                instruction: '请使用已登录的汽水音乐 App 扫码',
+                waiting: '等待汽水音乐 App 扫码…',
+                scanHint: '已扫码，请在汽水音乐 App 上确认',
+                hint: '汽水需要本机 Chrome/Chromium 生成签名。',
+            },
         };
 
-        const closeKugouQrLoginModal = () => {
-            stopKugouQrPolling();
-            kugouQrSessionKey = '';
-            closeModal('kugouQrModal');
+        let qrPlatform = 'netease';
+        let qrSessionKey = '';
+        let qrPollTimer = null;
+        let qrBusy = false;
+        let qrRunId = 0;
+        let qrPhase = 'waiting';
+
+        const qrEl = (id) => document.getElementById(id);
+
+        const setQrDot = (platform, state) => {
+            const tab = document.querySelector('.qr-platform-tab[data-platform="' + platform + '"]');
+            if (!tab) return;
+            const dot = tab.querySelector('.qr-tab-dot');
+            if (dot) dot.className = 'qr-tab-dot' + (state ? ' ' + state : '');
         };
 
-        const pollKugouQrLogin = async () => {
-            if (!kugouQrSessionKey) return;
-            const res = await api('/admin/qr/check', { method: 'POST', body: JSON.stringify({ platform: 'kugou', key: kugouQrSessionKey }) });
-            if (!res?.success) {
-                document.getElementById('kugouQrMessage').textContent = res?.error || '扫码状态查询失败';
-                stopKugouQrPolling();
+        const renderQrTabs = () => {
+            document.querySelectorAll('.qr-platform-tab').forEach(tab => {
+                const platform = tab.getAttribute('data-platform');
+                const active = platform === qrPlatform;
+                tab.classList.toggle('active', active);
+                tab.setAttribute('aria-selected', active ? 'true' : 'false');
+                tab.disabled = qrBusy && !active;
+            });
+        };
+
+        const setQrStatus = (text, kind = '') => {
+            const el = qrEl('qrStatus');
+            el.textContent = text || '';
+            el.className = 'qr-status' + (kind ? ' ' + kind : '');
+        };
+
+        // 后端部分平台会把上游英文状态（如 "success"）原样放在 message 里，
+        // 直接展示可读性差，这里只接受含中文的提示。
+        const preferMessage = (message, fallback) => {
+            const text = String(message || '').trim();
+            return /[\u4e00-\u9fa5]/.test(text) ? text : fallback;
+        };
+
+        const showQrPlaceholder = (text) => {
+            qrEl('qrImage').style.display = 'none';
+            qrEl('qrOverlay').style.display = 'none';
+            const holder = qrEl('qrPlaceholder');
+            holder.style.display = 'flex';
+            holder.querySelector('span').textContent = text || '正在生成二维码…';
+        };
+
+        const showQrImage = (src) => {
+            qrEl('qrPlaceholder').style.display = 'none';
+            qrEl('qrOverlay').style.display = 'none';
+            const image = qrEl('qrImage');
+            image.src = src;
+            image.style.display = 'block';
+        };
+
+        const showQrOverlay = (text, expired = false) => {
+            qrEl('qrPlaceholder').style.display = 'none';
+            qrEl('qrImage').style.display = 'none';
+            const overlay = qrEl('qrOverlay');
+            overlay.className = 'qr-overlay' + (expired ? ' expired' : '');
+            overlay.innerHTML = (expired ? '<div class="qr-expired-icon"></div>' : '') + '<div>' + text + '</div>';
+            overlay.style.display = 'flex';
+        };
+
+        const stopQrPolling = () => {
+            if (qrPollTimer) clearInterval(qrPollTimer);
+            qrPollTimer = null;
+        };
+
+        const applyQrPlatformChrome = () => {
+            const meta = QR_PLATFORMS[qrPlatform];
+            qrEl('qrInstruction').textContent = meta.instruction;
+            qrEl('qrHint').textContent = meta.hint;
+        };
+
+        const finishQrLogin = async (platform, cookie) => {
+            const runId = qrRunId;
+            const meta = QR_PLATFORMS[platform];
+            stopQrPolling();
+            setQrStatus('授权成功，正在保存凭证…', 'success');
+            setQrDot(platform, 'busy');
+            const save = await api('/admin/cookies', {
+                method: 'POST',
+                body: JSON.stringify({ platform, cookie, note: meta.note, isActive: true }),
+            });
+            // 保存期间用户可能已切换平台或关闭弹窗，此时不能再用旧结果改写界面。
+            if (runId !== qrRunId || platform !== qrPlatform) return;
+            if (save?.success) {
+                setQrDot(platform, 'ok');
+                showToast(meta.label + ' Cookie 已保存并验证', 'success');
+                const warn = save.data?.validationError;
+                if (warn) showToast('已保存，但验证未通过：' + warn, 'error');
+                closeQrLoginModal();
+                loadCookies();
+                loadDashboard();
+            } else {
+                setQrDot(platform, 'err');
+                setQrStatus(save?.error || '登录成功，但保存 Cookie 失败', 'error');
+            }
+        };
+
+        const pollQrLogin = async () => {
+            const runId = qrRunId;
+            const platform = qrPlatform;
+            if (!qrSessionKey || qrBusy) return;
+            qrBusy = true;
+            let result;
+            try {
+                result = await api('/admin/qr/check', {
+                    method: 'POST',
+                    body: JSON.stringify({ platform, key: qrSessionKey, qrsig: qrSessionKey }),
+                });
+            } finally {
+                qrBusy = false;
+            }
+            if (runId !== qrRunId || platform !== qrPlatform) return;
+            if (!result?.success) {
+                stopQrPolling();
+                setQrDot(platform, 'err');
+                setQrStatus(result?.error || '扫码状态查询失败', 'error');
+                showQrOverlay('状态查询失败', true);
                 return;
             }
-            const data = res.data || {};
-            document.getElementById('kugouQrMessage').textContent = data.message || '等待扫码';
-            if (data.status === 'confirmed') {
-                stopKugouQrPolling();
-                const save = await api('/admin/cookies', { method: 'POST', body: JSON.stringify({ platform: 'kugou', cookie: data.cookie, note: '酷狗扫码登录', isActive: true }) });
-                if (save?.success) {
-                    showToast('酷狗 Cookie 已保存并验证', 'success');
-                    closeKugouQrLoginModal();
-                    loadCookies(); loadDashboard();
-                } else document.getElementById('kugouQrMessage').textContent = save?.error || '登录成功，但保存 Cookie 失败';
-            } else if (data.status === 'expired' || data.status === 'error') {
-                stopKugouQrPolling();
-            }
-        };
 
-        const startKugouQrLogin = async () => {
-            stopKugouQrPolling();
-            document.getElementById('kugouQrImage').style.display = 'none';
-            document.getElementById('kugouQrMessage').textContent = '正在生成二维码...';
-            const res = await api('/admin/qr/create', { method: 'POST', body: JSON.stringify({ platform: 'kugou' }) });
-            if (!res?.success || !res.data?.key || !res.data?.qrurl) {
-                document.getElementById('kugouQrMessage').textContent = res?.error || '二维码生成失败';
+            const meta = QR_PLATFORMS[platform];
+            const data = result.data || {};
+            const status = String(data.status || '').toLowerCase();
+
+            if (status === 'confirmed') {
+                await finishQrLogin(platform, data.cookie);
                 return;
             }
-            kugouQrSessionKey = res.data.key;
-            const image = document.getElementById('kugouQrImage');
-            image.src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(res.data.qrurl);
-            image.style.display = 'inline-block';
-            document.getElementById('kugouQrMessage').textContent = res.data.message || '请使用酷狗音乐 App 扫码';
-            kugouQrPollTimer = setInterval(pollKugouQrLogin, 2000);
-            await pollKugouQrLogin();
+
+            if (status === 'second_verify') {
+                qrPhase = 'scanned';
+                setQrDot(platform, 'busy');
+                setQrStatus('该账号需要汽水二次安全验证，请在汽水 App 或网页端完成后再试');
+                return;
+            }
+
+            if (status === 'expired') {
+                stopQrPolling();
+                setQrDot(platform, 'err');
+                setQrStatus(preferMessage(data.message, '二维码已过期，请刷新'), 'error');
+                showQrOverlay(preferMessage(data.message, '二维码已过期'), true);
+                return;
+            }
+
+            if (status === 'error') {
+                stopQrPolling();
+                setQrDot(platform, 'err');
+                setQrStatus(preferMessage(data.message, '扫码异常'), 'error');
+                showQrOverlay('扫码失败', true);
+                return;
+            }
+
+            if (status === 'scanned') {
+                qrPhase = 'scanned';
+                setQrDot(platform, 'busy');
+                setQrStatus(preferMessage(data.message, meta.scanHint));
+                return;
+            }
+
+            // waiting：已扫过就不要把文案打回“等待扫码”
+            if (qrPhase !== 'scanned') {
+                setQrStatus(preferMessage(data.message, meta.waiting));
+            }
         };
 
-        const showKugouQrLoginModal = () => {
-            document.getElementById('kugouQrModal').classList.add('show');
-            startKugouQrLogin();
+        const startQrLogin = async () => {
+            const runId = ++qrRunId;
+            const platform = qrPlatform;
+            const meta = QR_PLATFORMS[platform];
+            stopQrPolling();
+
+            qrSessionKey = '';
+            qrPhase = 'waiting';
+            qrBusy = false;
+            applyQrPlatformChrome();
+            renderQrTabs();
+            setQrDot(platform, 'busy');
+            showQrPlaceholder('正在生成二维码…');
+            setQrStatus('正在初始化…');
+
+            const res = await api('/admin/qr/create', {
+                method: 'POST',
+                body: JSON.stringify({ platform }),
+            });
+            if (runId !== qrRunId || platform !== qrPlatform) return;
+
+            const data = res?.data || {};
+            const image = data.qrimg
+                || (data.qrurl ? 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(data.qrurl) : '');
+            const key = data.key || data.token || data.qrsig || '';
+
+            if (!res?.success || !key || !image) {
+                setQrDot(platform, 'err');
+                showQrOverlay('二维码生成失败', true);
+                setQrStatus(res?.error || '二维码生成失败', 'error');
+                return;
+            }
+
+            qrSessionKey = key;
+            showQrImage(image);
+            setQrStatus(preferMessage(data.message, meta.waiting));
+            qrPollTimer = setInterval(pollQrLogin, platform === 'qishui' ? 3000 : 2000);
+            await pollQrLogin();
+        };
+
+        const restartQrLogin = () => { startQrLogin(); };
+
+        const switchQrPlatform = (platform) => {
+            if (!QR_PLATFORMS[platform] || platform === qrPlatform) return;
+            qrPlatform = platform;
+            startQrLogin();
+        };
+
+        const closeQrLoginModal = () => {
+            qrRunId += 1;
+            stopQrPolling();
+            qrSessionKey = '';
+            qrBusy = false;
+            closeModal('qrLoginModal');
+        };
+
+        const showQrLoginModal = () => {
+            qrEl('qrLoginModal').classList.add('show');
+            startQrLogin();
         };
         const showAddCookieModal = () => {
             document.getElementById('cookieModalTitle').textContent = '添加Cookie';
