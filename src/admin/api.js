@@ -2,13 +2,40 @@ import store from '../admin/store.js'
 import { authMiddleware, adminMiddleware, apiTokenMiddleware } from '../middleware/auth.js'
 import { validateCookie } from './cookie-validator.js'
 import cookieMonitor from './cookie-monitor.js'
-import { createQishuiQr, checkQishuiQr, completeQishuiSecondVerify, getQishuiSecondVerifyAsset, requestQishuiSecondVerify } from '../providers/qishui/qr.js'
+import { createQishuiQr, checkQishuiQr, completeQishuiSecondVerify, getQishuiSecondVerifyAsset, requestQishuiSecondVerify, hasQishuiQrSession } from '../providers/qishui/qr.js'
 import { createNeteaseQrSession, checkNeteaseQrSession } from '../providers/netease/qr_login.js'
 import { createTencentQrSession, checkTencentQrSession } from '../providers/tencent/qr_login.js'
 import { createKugouQrSession, checkKugouQrSession } from '../providers/kugou/qr_login.js'
 import Providers from '../providers/index.js'
 import { get_url } from '../util.js'
 import { wrapQishuiPlayPayload } from '../providers/qishui/audio.js'
+
+/**
+ * 汽水二次验证 iframe 专用鉴权。
+ *
+ * `security_host.html` 以 `sandbox="allow-scripts"` 内嵌，属于 opaque origin，
+ * 无法携带 `X-Auth-Token` 等自定义请求头，因此这几条路由不能只依赖 authMiddleware。
+ *
+ * 这里采用能力凭证模型：二维码 token 由后台创建扫码会话时下发，仅在会话存活期间
+ * 有效，且无法被外部猜测。已登录的管理员仍可通过常规请求头或 API Token 访问。
+ */
+const qishuiVerifyAuth = async (c, next) => {
+    if (c.req.header('X-Auth-Token') || c.req.header('Authorization')) {
+        return authMiddleware(c, next)
+    }
+    let body = {}
+    try {
+        body = await c.req.raw.clone().json()
+    } catch {
+        body = {}
+    }
+    const key = body.key || body.token || c.req.query('key') || c.req.query('token')
+    if (key && hasQishuiQrSession(key)) {
+        c.set('username', 'qishui-verify')
+        return await next()
+    }
+    return authMiddleware(c, next)
+}
 
 const formatCookieForDisplay = (cookie) => {
     const { id, platform, createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError } = cookie
@@ -207,7 +234,11 @@ export const adminRoutes = (app) => {
         }
     })
 
-    app.get('/admin/qr/qishui/security/:asset', authMiddleware, async (c) => {
+    // 汽水二次验证的静态资源（React、腾讯安全 SDK 等）。
+    // 这些文件不含任何密钥，且 sandbox 内嵌的 iframe 加载子资源时既不带 key 也不带
+    // Referer（sec-fetch-site: cross-site），无法参与凭证鉴权，因此保持公开可读，
+    // 仅靠白名单限制文件名。真正的安全边界是下面带 key 校验的 bridge 路由。
+    app.get('/admin/qr/qishui/security/:asset', async (c) => {
         try {
             const asset = getQishuiSecondVerifyAsset(c.req.param('asset'))
             return new Response(asset.body, { headers: { 'Content-Type': asset.contentType, 'Cache-Control': 'no-store' } })
@@ -216,7 +247,7 @@ export const adminRoutes = (app) => {
         }
     })
 
-    app.post('/admin/qr/qishui/request', authMiddleware, async (c) => {
+    const handleQishuiVerifyRequest = async (c) => {
         try {
             const body = await c.req.json()
             const data = await requestQishuiSecondVerify(body.key || body.token, body.request || {})
@@ -224,9 +255,14 @@ export const adminRoutes = (app) => {
         } catch (error) {
             return c.json({ success: false, error: error?.message || '汽水验证请求失败' }, 502)
         }
-    })
+    }
 
-    app.post('/admin/qr/qishui/verify/start', authMiddleware, async (c) => {
+    app.post('/admin/qr/qishui/request', qishuiVerifyAuth, handleQishuiVerifyRequest)
+    // security_host.html 以 bridgeRoot 为前缀拼接，会请求 /verify/request；
+    // 与 openmusic 使用的 /qishui/request 保持两条路径共存。
+    app.post('/admin/qr/qishui/verify/request', qishuiVerifyAuth, handleQishuiVerifyRequest)
+
+    app.post('/admin/qr/qishui/verify/start', qishuiVerifyAuth, async (c) => {
         try {
             const body = await c.req.json()
             const result = await checkQishuiQr(body.key || body.token)
@@ -237,7 +273,7 @@ export const adminRoutes = (app) => {
         }
     })
 
-    app.post('/admin/qr/qishui/verify/complete', authMiddleware, async (c) => {
+    app.post('/admin/qr/qishui/verify/complete', qishuiVerifyAuth, async (c) => {
         try {
             const body = await c.req.json()
             return c.json({ success: true, data: await completeQishuiSecondVerify(body.key || body.token) })
