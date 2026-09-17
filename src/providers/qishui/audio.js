@@ -1,7 +1,6 @@
 import crypto from 'crypto'
 import { Buffer } from 'buffer/index.js'
 import { get_public_base } from '../../util.js'
-import { analyzeQishuiAudioBuffer } from './loudness.js'
 
 const WEB_UA = 'LunaPC/3.3.0(359450208)'
 
@@ -443,9 +442,8 @@ export const preloadQishuiAudio = (url, auth) => {
 }
 
 const ensureQishuiLoudness = async (value) => {
-    if (value?.loudness) return value
-    const loudness = await analyzeQishuiAudioBuffer(value?.buffer, value?.contentType)
-    return loudness ? { ...value, loudness } : value
+    // 响度分析暂时停用：避免为播放链路额外下载与解码整首音频。
+    return value
 }
 
 export const loadQishuiAudio = async (url, auth) => {

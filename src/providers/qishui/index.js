@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { normalizeLoudness } from '../../quality.js'
-import { loadQishuiAudio } from './audio.js'
 import { generateQishuiSignatureHeaders, isQishuiRemoteSignerConfigured } from './signature.js'
 
 const PUBLIC_SEARCH = 'https://api-vehicle.volcengine.com/v2/search/type'
@@ -700,12 +699,7 @@ const get_song_url = async (id, cookie, options = {}) => {
     // 汽水取链需要 X-Medusa、X-Helios，使用手机端接口替代。
     if (!text(cookie) || !isQishuiRemoteSignerConfigured(options.signerUrl)) return null
     try {
-        const stream = await get_pc_song_url(id, cookie, options)
-        if (stream?.url && stream?.auth && !stream.loudness) {
-            const audio = await loadQishuiAudio(stream.url, stream.auth)
-            if (audio?.loudness) return { ...stream, loudness: audio.loudness }
-        }
-        return stream
+        return await get_pc_song_url(id, cookie, options)
     } catch (error) {
         console.warn('[Qishui] 获取播放流失败', JSON.stringify({
             id: text(id),
