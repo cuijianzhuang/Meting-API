@@ -20,6 +20,7 @@ describe('auxiliary loudness service', () => {
             },
         })
 
+        expect(new URL(requestedUrl).search).toMatch(/^\?id=song-1&url=/)
         expect(new URL(requestedUrl).searchParams.get('url')).toBe('https://cdn.example/song.mp3')
         expect(new URL(requestedUrl).searchParams.get('id')).toBe('song-1')
         expect(result).toEqual({ gain: -12.6482, peak: 1.3296 })

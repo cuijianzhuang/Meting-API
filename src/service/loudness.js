@@ -9,8 +9,8 @@ export const fetchAuxiliaryLoudness = async ({ serviceUrl, audioUrl, songId, fet
     if (!serviceUrl || !audioUrl) return undefined
     try {
         const endpoint = new URL(serviceUrl)
-        endpoint.searchParams.set('url', audioUrl)
         if (songId) endpoint.searchParams.set('id', songId)
+        endpoint.searchParams.set('url', audioUrl)
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), timeoutMs)
         try {
