@@ -81,7 +81,7 @@ export const parseKugouCookie = (raw = '') => Object.fromEntries(text(raw).split
 export const isKugouMembershipRequestParamError = (error) => Number(error?.code || error?.error_code) === 20010
 export const isKugouNonFatalError = (error) => {
   const code = Number(error?.code || error?.error_code || error?.status)
-  return code === 20010 || code === 200101 || (code >= 500 && code < 600)
+  return code === 20010 || code === 200101 || code === 31863 || (code >= 500 && code < 600)
 }
 export const buildKugouTrackKey = (hash, cookie = {}) => md5(`${text(hash).toLowerCase()}${TRACK_KEY_SALT}${LITE_APPID}${buildKugouDevice(cookie).mid}${Number(cookie.userid) || 0}`)
 export const normalizeKugouId = (id) => {
@@ -537,16 +537,22 @@ export const mapKugouMembership = (payload = {}, cookie = {}) => {
 const audioUrl = async (id, quality, cookie) => {
   const { hash, albumAudioId } = normalizeKugouId(id)
   const requested = getKugouQuality(quality)
-  const data = await requestKugou('/v5/url', {
-    params: {
-      album_id: 0, area_code: 1, hash, ssa_flag: 'is_fromtrack', version: 11430,
-      page_id: 967177915, quality: requested.request, album_audio_id: albumAudioId,
-      behavior: 'play', pid: 411, cmd: 26, pidversion: 3001, cdnBackup: 1,
-      IsFreePart: 1, ppage_id: '356753938,823673182,967485191', module: '',
-      key: buildKugouTrackKey(hash, cookie),
-    },
-    cookie, headers: { 'x-router': 'trackercdn.kugou.com' },
-  })
+  let data
+  try {
+    data = await requestKugou('/v5/url', {
+      params: {
+        album_id: 0, area_code: 1, hash, ssa_flag: 'is_fromtrack', version: 11430,
+        page_id: 967177915, quality: requested.request, album_audio_id: albumAudioId,
+        behavior: 'play', pid: 411, cmd: 26, pidversion: 3001, cdnBackup: 1,
+        IsFreePart: 1, ppage_id: '356753938,823673182,967485191', module: '',
+        key: buildKugouTrackKey(hash, cookie),
+      },
+      cookie, headers: { 'x-router': 'trackercdn.kugou.com' },
+    })
+  } catch (error) {
+    if (isKugouNonFatalError(error)) return { url: '', reason: text(error.message || '该曲目当前无可播放地址') }
+    throw error
+  }
   const info = data?.data || data
   const url = [info?.play_url, info?.url, info?.ori_url, info?.backupUrl, info?.backup_url].flat().find(Boolean) || ''
   const actual = getKugouActualQuality(info)
