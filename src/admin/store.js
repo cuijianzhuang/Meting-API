@@ -1037,7 +1037,8 @@ class DataStore {
             webhookUrl: this.config.webhookUrl || null,
             monitorEnabled: this.config.monitorEnabled || false,
             monitorInterval: this.config.monitorInterval || 60,
-            qishuiSignerUrl: this.config.qishuiSignerUrl || null
+            qishuiSignerUrl: this.config.qishuiSignerUrl || null,
+            loudnessServiceUrl: this.config.loudnessServiceUrl || null,
         }
     }
 
@@ -1052,6 +1053,18 @@ class DataStore {
         await this.addLog('config_update', `更新汽水签名接口地址: ${value || '已清空'}`, operator)
         await this.saveToFile()
         return { success: true, data: { qishuiSignerUrl: value || null } }
+    }
+    getLoudnessServiceUrl() {
+        return this.config.loudnessServiceUrl || ''
+    }
+
+    async setLoudnessServiceUrl(url, operator = 'system') {
+        const value = String(url || '').trim().replace(/\/+$/, '')
+        if (value && !/^https?:\/\//i.test(value)) return { success: false, error: '响度服务地址必须是 http 或 https URL' }
+        this.config.loudnessServiceUrl = value || null
+        await this.addLog('config_update', `更新响度辅助服务地址: ${value || '已清空'}`, operator)
+        await this.saveToFile()
+        return { success: true, data: { loudnessServiceUrl: value || null } }
     }
     getWebhookConfig() {
         return {

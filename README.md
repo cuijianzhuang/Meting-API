@@ -76,6 +76,20 @@ docker run -d \
   w3126197382/meting-api:latest
 ```
 
+### [OpenMusic-Meting-Api 响度辅助服务](https://github.com/qq01-hub/OpenMusic-Meting-Api-Audio-Loudness)
+
+OpenMusic-Meting-Api 是独立的音频响度分析辅助服务。
+
+可在管理后台“监测设置”中配置服务地址。配置后，`type=url` 会分析标准音质响度，同时保留用户请求的实际音质；服务异常时继续使用平台返回值。
+
+接口地址示例：
+
+```bash
+LOUDNESS_SERVICE_URL=http://localhost:3100/analyze
+```
+
+Docker 网络中可使用：`http://meting-api-audio-loudness:3100/analyze`
+
 ## 📡 API 一览
 
 ### 基础格式

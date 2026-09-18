@@ -6,7 +6,7 @@ export const renderHomepage = ({ baseUrl, runtime, port, overseas, version = '3.
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meting-API</title>
+<title>OpenMusic-Meitng</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -414,7 +414,7 @@ footer {
       </div>
       <div class="brand-text">
         <div class="brand-row">
-          <strong>Meting-API</strong>
+          <strong>OpenMusic-Meitng</strong>
           <span class="brand-ver">v${version}</span>
         </div>
         <span class="tagline">multi-platform music API</span>
@@ -474,7 +474,7 @@ footer {
           <tr><td><span class="k">server</span></td><td><code>netease</code></td><td><code>netease</code> · <code>tencent</code> · <code>qishui</code> · <code>kugou</code></td></tr>
           <tr><td><span class="k">type</span></td><td><code>playlist</code></td><td>见下方能力矩阵</td></tr>
           <tr><td><span class="k">id</span></td><td>—</td><td>资源 ID / 搜索词 / 漫游模式（QQ 漫游忽略）</td></tr>
-          <tr><td><span class="k">quality</span></td><td><code>standard</code></td><td>仅 <code>type=url</code></td></tr>
+          <tr><td><span class="k">quality</span></td><td><code>standard</code></td><td>播放地址接口的音质参数</td></tr>
           <tr><td><span class="k">redirect</span></td><td>—</td><td><code>1</code> → <code>url</code>/<code>pic</code> 302</td></tr>
         </tbody>
       </table>
@@ -509,7 +509,7 @@ footer {
 
   <section class="section" id="quality">
     <h2><span class="num">03</span>音质</h2>
-    <p class="hint">仅 <code>type=url</code>。会员或曲目资源不足时自动降级；返回的 <code>quality</code> 是实际档位。酷狗 320 / 无损需 VIP，Hi-Res / 全景声 / 母带需 SVIP。</p>
+    <p class="hint">会员权限不足或曲目不提供对应档位时自动降级；返回的 <code>quality</code> 是实际档位。</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>quality</th><th>网易</th><th>QQ</th><th>汽水</th><th>酷狗</th></tr></thead>
@@ -686,7 +686,7 @@ ${baseUrl}api?server=kugou&type=pic&id=72db6da75ffe23a3a6361bdb8f44d5f4</pre></d
   </section>
 </main>
 
-<footer>Powered by <a href="https://github.com/qq01-hub/Meting-API" target="_blank" rel="noreferrer">Meting-API</a></footer>
+<footer>Powered by <a href="https://github.com/qq01-hub/Meting-API" target="_blank" rel="noreferrer">OpenMusic-Meitng</a></footer>
 
 <script>
 document.querySelectorAll('.tabs').forEach(group => {

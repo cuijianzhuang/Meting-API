@@ -3,7 +3,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meting-API 管理后台</title>
+    <title>OpenMusic-Meitng 管理后台</title>
     <style>
         :root {
             --primary: #6366f1;
@@ -895,7 +895,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
 <body>
     <div class="login-container" id="loginContainer">
         <div class="login-box" id="loginBox">
-            <h1>🎵 Meting-API</h1>
+            <h1>🎵 OpenMusic-Meitng</h1>
             <p class="login-subtitle">管理后台登录</p>
             <form id="loginForm">
                 <div class="form-group">
@@ -1053,7 +1053,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
                         </form>
                     </div>
 
-                                        <div class="card">
+                    <div class="card">
                         <div class="card-header"><span class="card-title">汽水音乐签名服务</span></div>
                         <form id="qishuiSignerForm" style="max-width: 600px;">
                             <div class="form-group">
@@ -1062,6 +1062,17 @@ const getAdminHtml = () => `<!DOCTYPE html>
                                 <small>填写独立 qishui-signer 容器的 /sign 地址；留空则使用本地签名模式。</small>
                             </div>
                             <button type="submit" class="btn btn-primary">保存签名地址</button>
+                        </form>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><span class="card-title">音频响度辅助服务</span></div>
+                        <form id="loudnessServiceForm" style="max-width: 600px;">
+                            <div class="form-group">
+                                <label>响度接口地址</label>
+                                <input type="url" id="loudnessServiceUrl" placeholder="http://meting-api-audio-loudness:3100/analyze">
+                                <small>填写辅助项目的 /analyze 地址；留空则使用平台返回的响度。</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">保存响度地址</button>
                         </form>
                     </div>
 <div class="card">
@@ -1594,6 +1605,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
                     document.getElementById('adminPathInput').value = res.data.adminPath;
                 }
                 document.getElementById('qishuiSignerUrl').value = res.data?.qishuiSignerUrl || '';
+                document.getElementById('loudnessServiceUrl').value = res.data?.loudnessServiceUrl || '';
             }
         };
 
@@ -2330,6 +2342,13 @@ const getAdminHtml = () => `<!DOCTYPE html>
             const url = document.getElementById('qishuiSignerUrl').value.trim();
             const res = await api('/admin/config/qishui-signer', { method: 'PUT', body: JSON.stringify({ url }) });
             if (res?.success) showToast('汽水签名地址已保存');
+            else showToast(res?.error || '保存失败', 'error');
+        });
+        document.getElementById('loudnessServiceForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const url = document.getElementById('loudnessServiceUrl').value.trim();
+            const res = await api('/admin/config/loudness-service', { method: 'PUT', body: JSON.stringify({ url }) });
+            if (res?.success) showToast('响度辅助服务地址已保存');
             else showToast(res?.error || '保存失败', 'error');
         });
         document.getElementById('monitorForm').addEventListener('submit', async (e) => {

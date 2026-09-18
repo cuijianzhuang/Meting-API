@@ -33,7 +33,7 @@ let html = `
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meting-API 测试</title>
+    <title>OpenMusic-Meitng 测试</title>
     <link rel="stylesheet" href="https://unpkg.com/aplayer/dist/APlayer.min.css">
     <style>
         :root {
@@ -224,7 +224,7 @@ Object.keys(example).map(provider => {
 
 html += `
     </div>
-    <footer>Powered by <a href="https://github.com/qq01-hub/Meting-API" target="_blank">Meting-API</a></footer>
+    <footer>Powered by <a href="https://github.com/qq01-hub/Meting-API" target="_blank">OpenMusic-Meitng</a></footer>
 </body>
 </html>
 `

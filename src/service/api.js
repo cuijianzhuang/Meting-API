@@ -4,6 +4,9 @@ import { wrapQishuiPlayPayload } from "../providers/qishui/audio.js"
 import store from "../admin/store.js"
 import { isValidQuality, getQualityName, buildUrlPayload } from "../quality.js"
 import { resolveQishuiSignerUrl } from './qishui-signer-config.js'
+import config from '../config.js'
+import { fetchAuxiliaryLoudness, needsStandardLoudnessUrl } from './loudness.js'
+import { resolveLoudnessServiceUrl } from './loudness-config.js'
 export default async (ctx) => {
 
     const p = new Providers()
@@ -77,6 +80,30 @@ export default async (ctx) => {
         if (url.startsWith('@')) {
             return ctx.text(url)
         }
+
+        let loudnessAudioUrl = url
+        const loudnessServiceUrl = resolveLoudnessServiceUrl(store.getLoudnessServiceUrl(), config.LOUDNESS_SERVICE_URL)
+        if (loudnessServiceUrl && needsStandardLoudnessUrl(quality)) {
+            try {
+                const standardData = await p.get(server).handle('url', id, cookie, { quality: 'standard', signerUrl })
+                const standardPayload = typeof standardData === 'string'
+                    ? buildUrlPayload(standardData, 'standard', 'standard', server)
+                    : standardData
+                loudnessAudioUrl = standardPayload?.url || ''
+                if (server === 'qishui' && standardPayload?.auth && loudnessAudioUrl) {
+                    loudnessAudioUrl = wrapQishuiPlayPayload(ctx, { ...standardPayload, url: loudnessAudioUrl }).url || loudnessAudioUrl
+                }
+            } catch (error) {
+                loudnessAudioUrl = ''
+                console.warn('[Meting] standard loudness URL skipped:', error?.message || error)
+            }
+        }
+        const auxiliaryLoudness = await fetchAuxiliaryLoudness({
+            serviceUrl: loudnessServiceUrl,
+            audioUrl: loudnessAudioUrl,
+            songId: id,
+        })
+        if (auxiliaryLoudness) payload.loudness = auxiliaryLoudness
 
         // 默认 JSON：url + 实际音质；redirect=1 时 302，兼容 Meting 等播放器
         if (wantRedirect) {
