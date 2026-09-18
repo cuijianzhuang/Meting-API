@@ -90,13 +90,33 @@ const getTencentMembership = async (cookie) => {
             deviceCookie: cookie.psrf_qqdevice || '',
         })
         if (code !== 0) return null
-        const identity = data.identity || data.Identity || {}
-        const isSvip = Number(data.svip || data.SVip) > 0 || Number(identity.HugeVip || identity.hugeVip || identity.huge_vip) > 0
-        const isVip = isSvip || Number(identity.vip || identity.Vip) > 0
-        return { isVip, isSvip, vipType: isSvip ? 2 : isVip ? 1 : 0 }
+        return mapTencentMembership(data)
     } catch {
         return null
     }
+}
+
+const getTencentExpiry = (source) => {
+    if (!source || typeof source !== 'object') return 0
+    const value = source.svip_end_time
+        ?? source.svipEndTime
+        ?? source.svip_expire_time
+        ?? source.svipExpireTime
+        ?? source.huge_vip_end_time
+        ?? source.hugeVipEndTime
+    const expiry = Number(value || 0)
+    if (!Number.isFinite(expiry) || expiry <= 0) return 0
+    return expiry > 100_000_000_000 ? expiry / 1000 : expiry
+}
+
+export const mapTencentMembership = (data = {}, now = Math.floor(Date.now() / 1000)) => {
+    const identity = data.identity || data.Identity || {}
+    const svipExpiry = getTencentExpiry(data) || getTencentExpiry(identity)
+    const svipActive = !svipExpiry || svipExpiry > now
+    const isSvip = svipActive && (Number(data.svip || data.SVip) > 0
+        || Number(identity.HugeVip || identity.hugeVip || identity.huge_vip) > 0)
+    const isVip = isSvip || Number(identity.vip || identity.Vip) > 0
+    return { isVip, isSvip, vipType: isSvip ? 2 : isVip ? 1 : 0 }
 }
 
 export const validateNeteaseCookie = async (cookieString) => {
@@ -228,8 +248,8 @@ export const validateTencentCookie = async (cookieString) => {
         if (result.req_0 && result.req_0.code === 0) {
             const userInfo = result.req_0.data
             const detectedSvip = detectSvip(userInfo, userInfo?.vipInfo, userInfo?.vip_info, userInfo?.memberInfo, userInfo?.member_info)
-            const isSvip = membership?.isSvip || detectedSvip
-            const isVip = membership?.isVip || (userInfo?.vip || 0) > 0 || isSvip
+            const isSvip = membership ? membership.isSvip : detectedSvip
+            const isVip = membership ? membership.isVip : (userInfo?.vip || 0) > 0 || isSvip
             
             return {
                 valid: true,
