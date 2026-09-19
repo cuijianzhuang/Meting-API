@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { selectActiveCookie, selectFmCookie, selectCookieForQuality, selectRequestCookie } from './store.js'
+import { selectActiveCookie, selectFmCookie, selectCookieForQuality, selectRequestCookie, shouldInvalidateCookieAfterUrlFailure } from './store.js'
 
 const cookie = (note, userInfo = {}, updatedAt = 1) => ({ note, userInfo, updatedAt })
 
@@ -52,5 +52,29 @@ describe('Meting 全局 Cookie 优先级', () => {
         fmCookie.fmPriority = true
 
         expect(selectRequestCookie(explicitCookie, fmCookie)).toBe(explicitCookie)
+    })
+
+    it('SVIP 音质连续获取失败且使用存储账号时标记为需要重新登录', () => {
+        expect(shouldInvalidateCookieAfterUrlFailure({
+            requiresSvip: true,
+            hasStoredCookie: true,
+            attempts: 2,
+            hasUrl: false,
+        })).toBe(true)
+    })
+
+    it('显式 Cookie 或未达到重试次数时不标记账号失效', () => {
+        expect(shouldInvalidateCookieAfterUrlFailure({
+            requiresSvip: true,
+            hasStoredCookie: false,
+            attempts: 2,
+            hasUrl: false,
+        })).toBe(false)
+        expect(shouldInvalidateCookieAfterUrlFailure({
+            requiresSvip: true,
+            hasStoredCookie: true,
+            attempts: 1,
+            hasUrl: false,
+        })).toBe(false)
     })
 })

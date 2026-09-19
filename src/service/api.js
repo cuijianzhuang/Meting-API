@@ -1,8 +1,7 @@
 import Providers from "../providers/index.js"
 import { format as lyricFormat, get_url } from "../util.js"
 import { wrapQishuiPlayPayload } from "../providers/qishui/audio.js"
-import store from "../admin/store.js"
-import { selectRequestCookie } from "../admin/store.js"
+import store, { selectRequestCookie, shouldInvalidateCookieAfterUrlFailure } from "../admin/store.js"
 import { isValidQuality, getQualityName, buildUrlPayload } from "../quality.js"
 import { resolveQishuiSignerUrl } from './qishui-signer-config.js'
 import config from '../config.js'
@@ -53,16 +52,44 @@ export default async (ctx) => {
             source: store.getQishuiSignerUrl() ? 'admin' : (process.env.QISHUI_SIGNER_URL ? 'env' : 'none'),
         }))
     }
-    let data = await p.get(server).handle(type, id, cookie, { quality, signerUrl })
+    const requiresSvip = type === 'url' && Boolean(quality) && store.isQualityRequiresSvip(quality, server)
+    let providerAttempts = 0
+    let data
+    try {
+        providerAttempts += 1
+        data = await p.get(server).handle(type, id, cookie, { quality, signerUrl })
+    } catch (error) {
+        if (!requiresSvip || !storedCookie) throw error
+    }
 
     if (type === 'url') {
         // 兼容旧返回：纯字符串 URL
-        const payload = typeof data === 'string'
+        let payload = typeof data === 'string'
             ? buildUrlPayload(data, quality || 'standard', quality || 'standard', server)
             : data
 
         let url = payload?.url || ''
+        if (!url && requiresSvip && storedCookie) {
+            try {
+                providerAttempts += 1
+                data = await p.get(server).handle(type, id, cookie, { quality, signerUrl })
+                payload = typeof data === 'string'
+                    ? buildUrlPayload(data, quality || 'standard', quality || 'standard', server)
+                    : data
+                url = payload?.url || ''
+            } catch {
+                providerAttempts += 1
+            }
+        }
         if (!url) {
+            if (shouldInvalidateCookieAfterUrlFailure({
+                requiresSvip,
+                hasStoredCookie: Boolean(storedCookie),
+                attempts: providerAttempts,
+                hasUrl: false,
+            })) {
+                await store.invalidateCookie(storedCookie.id)
+            }
             console.warn('[Meting] no url', JSON.stringify({
                 server,
                 type,

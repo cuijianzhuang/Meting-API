@@ -83,6 +83,13 @@ export const selectCookieForQuality = (cookies, quality, platform, preferFm = fa
 export const selectRequestCookie = (explicitCookie, storedCookie) =>
     String(explicitCookie || '').trim() || storedCookie?.cookie || ''
 
+export const shouldInvalidateCookieAfterUrlFailure = ({
+    requiresSvip = false,
+    hasStoredCookie = false,
+    attempts = 0,
+    hasUrl = false,
+} = {}) => Boolean(requiresSvip && hasStoredCookie && attempts >= 2 && !hasUrl)
+
 const generateSecret = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
     let secret = ''
@@ -560,6 +567,19 @@ class DataStore {
                 validationError: cookie.validationError
             }
         }
+    }
+
+    async invalidateCookie(id, reason = 'SVIP 音质连续获取失败，需要重新登录', username = 'system') {
+        const cookie = this.cookies.get(id)
+        if (!cookie) return { success: false, error: 'Cookie不存在' }
+
+        cookie.isValid = false
+        cookie.validationError = reason
+        cookie.updatedAt = Date.now()
+        this.cookies.set(id, cookie)
+        await this.addLog('cookie_invalid', `标记${cookie.platform} Cookie 失效: ${cookie.note || id} - ${reason}`, username)
+        await this.saveToFile()
+        return { success: true, data: { id, isValid: false, validationError: reason } }
     }
 
     async updateCookie(id, updates, username = 'system', skipValidation = false) {
