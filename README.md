@@ -5,9 +5,8 @@
 <p><strong>统一的多平台音乐 API 服务</strong></p>
 
 <p>
-  <a href="https://github.com/qq01-hub/Meting-API/releases"><img src="https://img.shields.io/github/v/release/qq01-hub/Meting-API?style=flat-square&color=7c3aed" alt="Release"></a>
   <a href="https://github.com/qq01-hub/Meting-API/stargazers"><img src="https://img.shields.io/github/stars/qq01-hub/Meting-API?style=flat-square&color=f59e0b" alt="Stars"></a>
-  <a href="https://github.com/qq01-hub/Meting-API/blob/main/LICENSE"><img src="https://img.shields.io/github/license/qq01-hub/Meting-API?style=flat-square&color=10b981" alt="License"></a>
+  <a href="https://github.com/qq01-hub/Meting-API/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-10b981?style=flat-square" alt="MIT License"></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js"></a>
   <a href="https://hub.docker.com/r/w3126197382/meting-api"><img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker"></a>
 </p>
@@ -132,6 +131,8 @@ GET /api?server={平台}&type={类型}&id={资源}&quality={音质}
 | 酷狗音乐 | 平台自有偏好 | 以平台返回结果为准 |
 
 > 播放地址请统一通过 `type=url` 再次请求获取。
+
+管理员可在 Cookie 管理中为每个平台设置一个“FM 优先”账号。FM 返回的歌曲链接会带 `fm=1` 标记：若优先账号无法提供请求音质，播放地址仍使用该 FM 歌曲 ID，并自动改由其他具备对应会员权限的账号获取。请求带 `X-OpenMusic-Cookie` 时始终以请求头中的 Cookie 为准，不启用 FM 优先切换。
 
 ### 音质 `quality`
 

@@ -2,6 +2,7 @@ import Providers from "../providers/index.js"
 import { format as lyricFormat, get_url } from "../util.js"
 import { wrapQishuiPlayPayload } from "../providers/qishui/audio.js"
 import store from "../admin/store.js"
+import { selectRequestCookie } from "../admin/store.js"
 import { isValidQuality, getQualityName, buildUrlPayload } from "../quality.js"
 import { resolveQishuiSignerUrl } from './qishui-signer-config.js'
 import config from '../config.js'
@@ -17,6 +18,7 @@ export default async (ctx) => {
     const id = query.id || '6907557348'
     const quality = query.quality?.toLowerCase()
     const wantRedirect = query.redirect === '1' || query.redirect === 'true'
+    const explicitCookie = String(ctx.req.header('X-OpenMusic-Cookie') || '').trim()
 
     if (!p.get_provider_list().includes(server) || !p.get(server).support_type.includes(type)) {
         ctx.status(400)
@@ -28,19 +30,21 @@ export default async (ctx) => {
         return ctx.json({ status: 400, message: 'quality 参数不合法', param: { server, quality } })
     }
 
-    let cookie = ''
+    let cookie = explicitCookie
     let storedCookie = null
 
-    // 根据音质要求智能选择 cookie（随机选择 + SVIP 优先）
-    if (type === 'url' && quality) {
-        storedCookie = store.getActiveCookieForQuality(server, quality)
-    } else {
-        storedCookie = store.getActiveCookie(server)
+    // 显式 Cookie 始终优先；没有显式 Cookie 时才应用 FM 优先账号策略。
+    if (!explicitCookie) {
+        if (type === 'fm') {
+            storedCookie = store.getActiveCookieForFm(server)
+        } else if (type === 'url' && (quality || query.fm === '1')) {
+            storedCookie = store.getActiveCookieForQuality(server, quality || 'standard', query.fm === '1')
+        } else {
+            storedCookie = store.getActiveCookie(server)
+        }
     }
 
-    if (storedCookie) {
-        cookie = storedCookie.cookie
-    }
+    cookie = selectRequestCookie(explicitCookie, storedCookie)
 
     const signerUrl = server === 'qishui' ? resolveQishuiSignerUrl(store.getQishuiSignerUrl()) : ''
     if (server === 'qishui' && type === 'url') {
@@ -132,13 +136,14 @@ export default async (ctx) => {
             const _ = String(x[i])
             if (!_.startsWith('@') && !_.startsWith('http') && _.length > 0) {
                 const qualityParam = i === 'url' && quality ? `&quality=${quality}` : ''
+                const fmParam = i === 'url' && type === 'fm' ? '&fm=1' : ''
                 const redirectParam = i === 'url' ? '&redirect=1' : ''
                 let linkType = i
                 if (i === 'url') {
                     if (type === 'search_playlist') linkType = 'playlist'
                     else if (type === 'dj_hot' || type === 'dj_detail' || type === 'search_dj') linkType = 'dj'
                 }
-                x[i] = `${get_url(ctx)}?server=${server}&type=${linkType}&id=${_}${qualityParam}${redirectParam}`
+                x[i] = `${get_url(ctx)}?server=${server}&type=${linkType}&id=${_}${qualityParam}${fmParam}${redirectParam}`
             }
         }
         return x

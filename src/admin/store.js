@@ -1,6 +1,7 @@
 import { get_runtime } from '../util.js'
 import { validateCookie as validateCookieOnline } from './cookie-validator.js'
 import config from '../config.js'
+import { getQualityRequirement } from '../quality.js'
 
 const runtime = get_runtime()
 
@@ -52,6 +53,35 @@ export const selectActiveCookie = (cookies) => [...cookies]
         if (rank) return rank
         return Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0)
     })[0] || null
+
+export const selectFmCookie = (cookies) => {
+    const priorityCookie = cookies.find(cookie => cookie.fmPriority)
+    return priorityCookie || selectActiveCookie(cookies)
+}
+
+const cookieCanPlayRequirement = (cookie, requirement) => {
+    if (!cookie?.userInfo || requirement === '免费') return true
+    const info = cookie.userInfo
+    const canSvip = Boolean(
+        info.canPlaySvip || info.isSvip || (Number(info.svipType) || 0) > 0
+        || String(info.vipStage || info.vip_stage || '').toLowerCase() === 'svip',
+    )
+    if (requirement === 'SVIP') return canSvip
+    return canSvip || Boolean(info.canPlayVip || info.isVip)
+}
+
+export const selectCookieForQuality = (cookies, quality, platform, preferFm = false) => {
+    const available = [...cookies].filter(cookie => cookie.isActive !== false && cookie.isValid !== false)
+    if (!available.length) return null
+    const requirement = getQualityRequirement(quality, platform)
+    const fmCookie = preferFm ? selectFmCookie(available) : null
+    if (fmCookie && cookieCanPlayRequirement(fmCookie, requirement)) return fmCookie
+    const eligible = available.filter(cookie => cookieCanPlayRequirement(cookie, requirement))
+    return selectActiveCookie(eligible.length ? eligible : available)
+}
+
+export const selectRequestCookie = (explicitCookie, storedCookie) =>
+    String(explicitCookie || '').trim() || storedCookie?.cookie || ''
 
 const generateSecret = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
@@ -604,37 +634,52 @@ class DataStore {
         return selectActiveCookie(cookies)
     }
 
+    getFmPriorityCookieId(platform) {
+        return this.config.fmPriorityCookieIds?.[platform] || null
+    }
+
+    getActiveCookieForFm(platform) {
+        const cookies = this.getCookies(platform).filter(c => c.isActive && c.isValid !== false)
+        const priorityId = this.getFmPriorityCookieId(platform)
+        if (priorityId) {
+            const priorityCookie = cookies.find(cookie => cookie.id === priorityId)
+            if (priorityCookie) return priorityCookie
+        }
+        return selectFmCookie(cookies)
+    }
+
+    async setFmPriorityCookie(platform, cookieId, operator = 'system') {
+        if (!['netease', 'tencent', 'qishui', 'kugou'].includes(platform)) {
+            return { success: false, error: '无效的平台类型' }
+        }
+        const id = String(cookieId || '').trim()
+        if (id) {
+            const cookie = this.cookies.get(id)
+            if (!cookie || cookie.platform !== platform) {
+                return { success: false, error: '指定的 Cookie 不存在或平台不匹配' }
+            }
+        }
+        this.config.fmPriorityCookieIds = { ...(this.config.fmPriorityCookieIds || {}) }
+        if (id) this.config.fmPriorityCookieIds[platform] = id
+        else delete this.config.fmPriorityCookieIds[platform]
+        await this.addLog('config_update', `更新${platform} FM 优先账号: ${id || '已清空'}`, operator)
+        await this.saveToFile()
+        return { success: true, data: this.getConfig() }
+    }
+
     /**
      * 根据音质要求智能选择 cookie
      * @param {string} platform - 平台名称
      * @param {string} quality - 音质等级
      * @returns {object|null} - 选中的 cookie 或 null
      */
-    getActiveCookieForQuality(platform, quality = 'standard') {
+    getActiveCookieForQuality(platform, quality = 'standard', preferFm = false) {
         const cookies = this.getCookies(platform).filter(c => c.isActive && c.isValid !== false)
         if (cookies.length === 0) return null
-
-        // 判断是否需要 SVIP
-        const requiresSvip = this.isQualityRequiresSvip(quality, platform)
-
-        // 如果需要 SVIP，优先筛选出 SVIP 账号
-        let eligibleCookies = cookies
-        if (requiresSvip) {
-            const svipCookies = cookies.filter(c => cookieHasSvip(c))
-            if (svipCookies.length > 0) {
-                eligibleCookies = svipCookies
-            }
-            // 如果没有 SVIP 账号，仍然使用所有可用账号（会自动降级）
-        }
-
-        // 如果只有一个可用 cookie，直接返回
-        if (eligibleCookies.length === 1) {
-            return eligibleCookies[0]
-        }
-
-        // 多个可用 cookie 时，随机选择一个
-        const randomIndex = Math.floor(Math.random() * eligibleCookies.length)
-        return eligibleCookies[randomIndex]
+        const candidates = preferFm
+            ? cookies.map(cookie => ({ ...cookie, fmPriority: cookie.id === this.getFmPriorityCookieId(platform) }))
+            : cookies
+        return selectCookieForQuality(candidates, quality, platform, preferFm)
     }
 
     /**
@@ -1039,6 +1084,7 @@ class DataStore {
             monitorInterval: this.config.monitorInterval || 60,
             qishuiSignerUrl: this.config.qishuiSignerUrl || null,
             loudnessServiceUrl: this.config.loudnessServiceUrl || null,
+            fmPriorityCookieIds: { ...(this.config.fmPriorityCookieIds || {}) },
         }
     }
 

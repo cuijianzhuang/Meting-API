@@ -49,6 +49,7 @@ const formatCookieForDisplay = (cookie) => {
     return {
         id, platform, cookiePreview, note, providerName, source: cookie.source || (legacyContribution ? 'contribution' : 'admin'),
         createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError,
+        fmPriority: store.getFmPriorityCookieId(platform) === id,
     }
 }
 
@@ -531,6 +532,11 @@ export const adminRoutes = (app) => {
     app.put('/admin/config/loudness-service', authMiddleware, adminMiddleware, async (c) => {
         const body = await c.req.json()
         const result = await store.setLoudnessServiceUrl(body?.url, c.get('username'))
+        return c.json(result, result.success ? 200 : 400)
+    })
+    app.put('/admin/config/fm-priority', authMiddleware, adminMiddleware, async (c) => {
+        const body = await c.req.json()
+        const result = await store.setFmPriorityCookie(body?.platform, body?.cookieId, c.get('username'))
         return c.json(result, result.success ? 200 : 400)
     })
     app.put('/admin/config/admin-path', authMiddleware, adminMiddleware, async (c) => {

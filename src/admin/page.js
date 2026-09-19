@@ -1676,8 +1676,9 @@ const getAdminHtml = () => `<!DOCTYPE html>
                     (cookie.validationError ? '<div style="color:var(--danger);font-size:11px;">' + cookie.validationError + '</div>' : '') + '</td>' +
                     '<td>' + (cookie.isActive ? '<span class="status-dot status-active"></span>启用' : '<span class="status-dot status-inactive"></span>禁用') + '</td>' +
                     '<td>' + formatDate(cookie.createdAt) + '</td>' +
-                    '<td class="actions">' +
+                        '<td class="actions">' +
                         '<button class="btn btn-success btn-sm" onclick="verifyCookie(\\'' + cookie.id + '\\')">验证</button>' +
+                        '<button class="btn btn-default btn-sm" onclick="setFmPriority(\\'' + cookie.platform + '\\',\\'' + cookie.id + '\\')">' + (cookie.fmPriority ? '取消FM优先' : '设为FM优先') + '</button>' +
                         (cookie.platform === 'tencent' ? '<button class="btn btn-warning btn-sm" onclick="refreshCookie(\\'' + cookie.id + '\\')">刷新</button>' : '') +
                         '<button class="btn btn-default btn-sm" onclick="editCookie(\\'' + cookie.id + '\\')">编辑</button>' +
                         '<button class="btn btn-danger btn-sm" onclick="deleteCookie(\\'' + cookie.id + '\\')">删除</button>' +
@@ -2184,6 +2185,13 @@ const getAdminHtml = () => `<!DOCTYPE html>
                 } else showToast('Cookie验证失败: ' + (res.data.validationError || '无效'), 'error');
                 loadCookies(); loadDashboard();
             } else showToast(res?.error || '验证失败', 'error');
+        };
+
+        const setFmPriority = async (platform, cookieId) => {
+            const cookie = (await api('/admin/cookies?platform=' + encodeURIComponent(platform)))?.data?.find(item => item.id === cookieId);
+            const res = await api('/admin/config/fm-priority', { method: 'PUT', body: JSON.stringify({ platform, cookieId: cookie?.fmPriority ? '' : cookieId }) });
+            if (res?.success) { showToast(cookie?.fmPriority ? '已取消FM优先' : '已设为FM优先'); loadCookies(); }
+            else showToast(res?.error || '设置FM优先失败', 'error');
         };
 
         const refreshCookie = async (id) => {
