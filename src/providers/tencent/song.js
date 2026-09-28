@@ -29,6 +29,17 @@ const FALLBACK_CHAIN = [
     'standard',
 ]
 
+// ponytail: process-local challenges; use shared storage only for multi-process deployments.
+const pendingVerifications = new Map()
+
+export const getTencentVerification = (cookie) => {
+    const pending = pendingVerifications.get(cookie)
+    if (!pending) return null
+    if (Date.now() - pending.createdAt < 5 * 60 * 1000) return { songmid: pending.songmid, validUrl: pending.validUrl }
+    pendingVerifications.delete(cookie)
+    return null
+}
+
 const resolveQuality = (quality) => {
     if (!quality) return QUALITY_MAP['128']
     return QUALITY_MAP[quality.toLowerCase()] || QUALITY_MAP['128']
@@ -106,7 +117,7 @@ const buildFallbackLevels = (requestedKey) => {
     return FALLBACK_CHAIN.slice(idx)
 }
 
-const fetchVkeyUrl = async (songmid, mediaMid, typeObj, uin, authst) => {
+const fetchVkeyUrl = async (songmid, mediaMid, typeObj, uin, authst, cookie) => {
     const filename = [`${typeObj.s}${songmid}${mediaMid}${typeObj.e}`]
     const guid = (Math.random() * 10000000).toFixed(0)
 
@@ -160,9 +171,19 @@ const fetchVkeyUrl = async (songmid, mediaMid, typeObj, uin, authst) => {
     const info = result?.req_0?.data?.midurlinfo?.[0]
     const purl = info?.purl || ''
 
+    const verificationRequired = result?.req_0?.code === 104009 || result?.req_0?.data?.retcode === 104009
+    if (verificationRequired) {
+        try {
+            const validUrl = new URL(String(result.req_0.data.validUrl).replace(/\\([:/_])/g, '$1'))
+            if (validUrl.protocol === 'https:' && validUrl.hostname === 'c.y.qq.com') {
+                pendingVerifications.set(cookie, { songmid, validUrl: validUrl.href, createdAt: Date.now() })
+            }
+        } catch {}
+    }
+
     // 104003 无权限；空 purl；或 result 非 0 都视为失败
-    if (!purl || (info?.result !== undefined && info.result !== 0)) {
-        return { url: '' }
+    if (verificationRequired || !purl || (info?.result !== undefined && info.result !== 0)) {
+        return { url: '', verificationRequired }
     }
 
     const domain =
@@ -252,7 +273,8 @@ export const get_song_url = async (id, cookie = '', options = {}) => {
         }
 
         try {
-            const { url } = await fetchVkeyUrl(songmid, mediaMid, typeObj, uin, authst)
+            const { url, verificationRequired } = await fetchVkeyUrl(songmid, mediaMid, typeObj, uin, authst, cookie)
+            if (verificationRequired) break
             if (!url) continue
 
             const ok = await isPlayableUrl(url)
@@ -264,6 +286,7 @@ export const get_song_url = async (id, cookie = '', options = {}) => {
             if (QUALITY_MAP[requested]?.s !== typeObj.s) {
                 console.log(`[tencent] quality ${requested} unavailable for ${songmid}, fallback to ${level}`)
             }
+            pendingVerifications.delete(cookie)
             return buildUrlPayload(url, level, requested, 'tencent', file?.volume, file?.duration)
         } catch (e) {
             console.error(`[tencent] fetch url level=${level} failed:`, e?.message || e)

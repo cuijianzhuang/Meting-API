@@ -681,6 +681,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
 
         .validation-status { display: flex; align-items: center; gap: 8px; }
         .user-info-tooltip { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+        .url-error-count { white-space: nowrap; }
 
         .loading {
             display: inline-block;
@@ -993,6 +994,15 @@ const getAdminHtml = () => `<!DOCTYPE html>
                 </div>
 
                 <div class="content-section" id="cookiesSection">
+                    <div class="card" id="tencentVerifyBanner" role="status" style="display:none;padding:16px;margin-bottom:16px;border:1px solid var(--warning);">
+                        <strong>QQ 音乐需要滑块验证</strong>
+                        <p id="tencentVerifyMessage" style="margin:8px 0;color:var(--text-secondary);"></p>
+                        <p style="margin-bottom:12px;color:var(--text-secondary);font-size:13px;">在服务端浏览器中使用当前 Cookie 打开官方验证页。请在弹窗中手动拖动滑块，完成后重试播放。</p>
+                        <div class="actions">
+                            <button type="button" class="btn btn-warning btn-sm" onclick="openTencentVerification()">打开滑块验证</button>
+                            <button type="button" class="btn btn-default btn-sm" id="tencentVerifyRetry" onclick="retryTencentVerification()">完成后重试</button>
+                        </div>
+                    </div>
                     <div class="card">
                         <div class="card-header">
                             <span class="card-title">Cookie列表</span>
@@ -1361,6 +1371,22 @@ const getAdminHtml = () => `<!DOCTYPE html>
             </div>
         </div>
     </div>
+    <div class="modal" id="tencentVerifyModal">
+        <div class="modal-content" style="max-width:460px;max-height:95vh;overflow-y:auto;">
+            <div class="modal-header">
+                <h3>QQ 音乐滑块验证</h3>
+                <button type="button" class="modal-close" aria-label="关闭验证窗口" onclick="closeTencentVerification()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="tencentVerifyStatus" role="status" style="margin-bottom:12px;color:var(--text-secondary);">正在加载官方验证页面…</p>
+                <img id="tencentVerifyImage" alt="QQ 音乐验证页面，可在图像上拖动滑块" draggable="false" style="width:400px;max-width:100%;height:auto;touch-action:none;user-select:none;display:block;margin:auto;">
+            </div>
+            <div class="modal-footer" style="position:sticky;bottom:0;background:var(--bg-card);">
+                <button type="button" class="btn btn-default" onclick="closeTencentVerification()">关闭</button>
+                <button type="button" class="btn btn-primary" onclick="retryTencentVerification()">完成后重试</button>
+            </div>
+        </div>
+    </div>
     <div class="modal" id="userModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1651,6 +1677,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
         };
 
         const loadCookies = async () => {
+            loadTencentVerifications();
             const res = await api('/admin/cookies');
             if (!res?.success) return;
             const tbody = document.getElementById('cookiesList');
@@ -1673,6 +1700,7 @@ const getAdminHtml = () => `<!DOCTYPE html>
                     '<td>' + (cookie.note || '-') + '</td>' +
                     '<td><div class="validation-status">' + getValidationBadge(cookie) + '</div>' +
                     (vipAbilityText ? '<div class="user-info-tooltip">' + vipAbilityText + '</div>' : '') +
+                    '<div class="user-info-tooltip url-error-count">URL 获取失败：' + (cookie.urlErrorCount || 0) + ' 次</div>' +
                     (cookie.validationError ? '<div style="color:var(--danger);font-size:11px;">' + cookie.validationError + '</div>' : '') + '</td>' +
                     '<td>' + (cookie.isActive ? '<span class="status-dot status-active"></span>启用' : '<span class="status-dot status-inactive"></span>禁用') + '</td>' +
                     '<td>' + formatDate(cookie.createdAt) + '</td>' +
@@ -1685,6 +1713,109 @@ const getAdminHtml = () => `<!DOCTYPE html>
                     '</td></tr>';
             }).join('');
         };
+
+        let tencentVerificationId = '';
+        let tencentVerifyTimer = null;
+        let tencentVerifyImageUrl = '';
+        let tencentVerifyBusy = false;
+        let lastTencentPointerMove = 0;
+        let tencentPointerQueue = Promise.resolve();
+        const loadTencentVerifications = async () => {
+            const res = await api('/admin/cookies/tencent-verifications');
+            const pending = res?.success ? res.data?.[0] : null;
+            const banner = document.getElementById('tencentVerifyBanner');
+            tencentVerificationId = pending?.id || '';
+            banner.style.display = pending ? 'block' : 'none';
+            if (!pending) return;
+            document.getElementById('tencentVerifyMessage').textContent = '歌曲 ' + pending.songmid + ' 触发验证。';
+        };
+
+        const refreshTencentVerificationFrame = async () => {
+            if (!tencentVerificationId || tencentVerifyBusy || !document.getElementById('tencentVerifyModal').classList.contains('show')) return;
+            tencentVerifyBusy = true;
+            try {
+                const response = await fetch('/admin/cookies/' + encodeURIComponent(tencentVerificationId) + '/verification/frame', {
+                    headers: { 'X-Auth-Username': authUsername, 'X-Auth-Token': authToken },
+                    cache: 'no-store',
+                });
+                if (!response.ok) throw new Error('验证窗口已关闭，请重新打开');
+                const imageUrl = URL.createObjectURL(await response.blob());
+                if (!document.getElementById('tencentVerifyModal').classList.contains('show')) { URL.revokeObjectURL(imageUrl); return; }
+                document.getElementById('tencentVerifyImage').src = imageUrl;
+                if (tencentVerifyImageUrl) URL.revokeObjectURL(tencentVerifyImageUrl);
+                tencentVerifyImageUrl = imageUrl;
+                document.getElementById('tencentVerifyStatus').textContent = '请在下方画面中拖动滑块；完成后点击“完成后重试”。';
+            } catch (error) {
+                document.getElementById('tencentVerifyStatus').textContent = error.message;
+                clearInterval(tencentVerifyTimer);
+                tencentVerifyTimer = null;
+            } finally {
+                tencentVerifyBusy = false;
+            }
+        };
+
+        const openTencentVerification = async () => {
+            if (!tencentVerificationId) return;
+            document.getElementById('tencentVerifyStatus').textContent = '正在加载官方验证页面…';
+            const res = await api('/admin/cookies/' + encodeURIComponent(tencentVerificationId) + '/verification/start', { method: 'POST' });
+            if (!res?.success) { showToast(res?.error || '验证窗口打开失败', 'error'); return; }
+            document.getElementById('tencentVerifyModal').classList.add('show');
+            await refreshTencentVerificationFrame();
+            clearInterval(tencentVerifyTimer);
+            tencentVerifyTimer = setInterval(refreshTencentVerificationFrame, 650);
+        };
+
+        const closeTencentVerification = async () => {
+            clearInterval(tencentVerifyTimer);
+            tencentVerifyTimer = null;
+            document.getElementById('tencentVerifyModal').classList.remove('show');
+            document.getElementById('tencentVerifyImage').removeAttribute('src');
+            if (tencentVerifyImageUrl) URL.revokeObjectURL(tencentVerifyImageUrl);
+            tencentVerifyImageUrl = '';
+            if (tencentVerificationId) await api('/admin/cookies/' + encodeURIComponent(tencentVerificationId) + '/verification/close', { method: 'POST' });
+        };
+
+        const tencentVerifyImage = document.getElementById('tencentVerifyImage');
+        const sendTencentPointer = (type, event) => {
+            const id = tencentVerificationId;
+            if (!id) return;
+            const bounds = tencentVerifyImage.getBoundingClientRect();
+            const position = { type, x: (event.clientX - bounds.left) * 400 / bounds.width, y: (event.clientY - bounds.top) * 720 / bounds.height };
+            tencentPointerQueue = tencentPointerQueue.catch(() => {}).then(() => api('/admin/cookies/' + encodeURIComponent(id) + '/verification/pointer', {
+                method: 'POST', body: JSON.stringify(position),
+            }));
+        };
+        tencentVerifyImage.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            tencentVerifyImage.setPointerCapture(event.pointerId);
+            sendTencentPointer('down', event);
+        });
+        tencentVerifyImage.addEventListener('pointermove', event => {
+            if (event.buttons & 1 && Date.now() - lastTencentPointerMove > 40) {
+                lastTencentPointerMove = Date.now();
+                sendTencentPointer('move', event);
+            }
+        });
+        tencentVerifyImage.addEventListener('pointerup', event => sendTencentPointer('up', event));
+        tencentVerifyImage.addEventListener('pointercancel', event => sendTencentPointer('up', event));
+
+        const retryTencentVerification = async () => {
+            if (!tencentVerificationId) return;
+            const button = document.getElementById('tencentVerifyRetry');
+            button.disabled = true;
+            try {
+                const res = await api('/admin/cookies/' + encodeURIComponent(tencentVerificationId) + '/retry-play', { method: 'POST' });
+                showToast(res?.success ? '验证已生效，请重新播放歌曲' : (res?.error || '重试失败'), res?.success ? 'success' : 'error');
+                if (res?.success && document.getElementById('tencentVerifyModal').classList.contains('show')) await closeTencentVerification();
+                await loadTencentVerifications();
+            } finally {
+                button.disabled = false;
+            }
+        };
+
+        setInterval(() => {
+            if (authToken && document.getElementById('cookiesSection').classList.contains('active')) loadTencentVerifications();
+        }, 5000);
 
         const loadUsers = async () => {
             const res = await api('/admin/users');

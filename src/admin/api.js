@@ -5,6 +5,8 @@ import cookieMonitor from './cookie-monitor.js'
 import { createQishuiQr, checkQishuiQr, completeQishuiSecondVerify, getQishuiSecondVerifyAsset, requestQishuiSecondVerify, hasQishuiQrSession } from '../providers/qishui/qr.js'
 import { createNeteaseQrSession, checkNeteaseQrSession } from '../providers/netease/qr_login.js'
 import { createTencentQrSession, checkTencentQrSession } from '../providers/tencent/qr_login.js'
+import { get_song_url, getTencentVerification } from '../providers/tencent/song.js'
+import { startTencentVerification, getTencentVerificationFrame, sendTencentVerificationPointer, closeTencentVerification } from '../providers/tencent/verification.js'
 import { createKugouQrSession, checkKugouQrSession } from '../providers/kugou/qr_login.js'
 import Providers from '../providers/index.js'
 import { get_url } from '../util.js'
@@ -38,7 +40,7 @@ const qishuiVerifyAuth = async (c, next) => {
 }
 
 const formatCookieForDisplay = (cookie) => {
-    const { id, platform, createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError } = cookie
+    const { id, platform, createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError, urlErrorCount } = cookie
     const legacyContribution = String(cookie.note || '').startsWith('contribution:')
     const providerName = String(cookie.providerName || cookie.createdBy || '').trim()
     const note = legacyContribution ? `首页共享 · ${providerName || '匿名用户'}` : cookie.note
@@ -48,7 +50,7 @@ const formatCookieForDisplay = (cookie) => {
     }
     return {
         id, platform, cookiePreview, note, providerName, source: cookie.source || (legacyContribution ? 'contribution' : 'admin'),
-        createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError,
+        createdAt, updatedAt, createdBy, isActive, isValid, validatedAt, userInfo, validationError, urlErrorCount: urlErrorCount || 0,
         fmPriority: store.getFmPriorityCookieId(platform) === id,
     }
 }
@@ -111,6 +113,65 @@ export const adminRoutes = (app) => {
         const platform = c.req.query('platform')
         const cookies = store.getCookies(platform).map(formatCookieForDisplay)
         return c.json({ success: true, data: cookies })
+    })
+
+    app.get('/admin/cookies/tencent-verifications', authMiddleware, adminMiddleware, (c) => {
+        const data = store.getCookies('tencent').flatMap(({ id, cookie }) => {
+            const pending = getTencentVerification(cookie)
+            return pending ? [{ id, songmid: pending.songmid }] : []
+        })
+        c.header('Cache-Control', 'no-store')
+        return c.json({ success: true, data })
+    })
+
+    app.post('/admin/cookies/:id/verification/start', authMiddleware, adminMiddleware, async (c) => {
+        const id = c.req.param('id')
+        const cookie = store.getCookie(id)
+        const pending = cookie?.platform === 'tencent' && getTencentVerification(cookie.cookie)
+        if (!pending) return c.json({ success: false, error: '验证已过期，请重新播放歌曲' }, 404)
+        try {
+            await startTencentVerification(id, cookie.cookie, pending.validUrl)
+            return c.json({ success: true })
+        } catch {
+            return c.json({ success: false, error: '服务端验证浏览器启动失败，请确认已安装 Chrome/Chromium' }, 502)
+        }
+    })
+
+    app.get('/admin/cookies/:id/verification/frame', authMiddleware, adminMiddleware, async (c) => {
+        try {
+            const image = await getTencentVerificationFrame(c.req.param('id'))
+            return new Response(image, { headers: { 'Content-Type': 'image/webp', 'Cache-Control': 'no-store' } })
+        } catch {
+            return c.json({ success: false, error: '验证窗口已关闭' }, 404)
+        }
+    })
+
+    app.post('/admin/cookies/:id/verification/pointer', authMiddleware, adminMiddleware, async (c) => {
+        try {
+            await sendTencentVerificationPointer(c.req.param('id'), await c.req.json())
+            return c.json({ success: true })
+        } catch {
+            return c.json({ success: false, error: '验证窗口或鼠标事件无效' }, 400)
+        }
+    })
+
+    app.post('/admin/cookies/:id/verification/close', authMiddleware, adminMiddleware, async (c) => {
+        await closeTencentVerification(c.req.param('id'))
+        return c.json({ success: true })
+    })
+
+    app.post('/admin/cookies/:id/retry-play', authMiddleware, adminMiddleware, async (c) => {
+        const cookie = store.getCookie(c.req.param('id'))
+        if (cookie?.platform !== 'tencent') return c.json({ success: false, error: 'QQ 音乐 Cookie 不存在' }, 404)
+        const pending = getTencentVerification(cookie.cookie)
+        if (!pending) return c.json({ success: false, error: '验证链接已过期，请重新播放歌曲' }, 404)
+        try {
+            const data = await get_song_url(pending.songmid, cookie.cookie, { quality: 'standard' })
+            if (data?.url) await closeTencentVerification(cookie.id)
+            return c.json({ success: Boolean(data?.url), error: data?.url ? undefined : '仍需验证，请确认滑块已完成后重试' })
+        } catch {
+            return c.json({ success: false, error: '播放重试失败，请稍后再试' }, 502)
+        }
     })
 
     app.get('/admin/cookies/:id', authMiddleware, async (c) => {

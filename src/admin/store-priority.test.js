@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { selectActiveCookie, selectFmCookie, selectCookieForQuality, selectRequestCookie, shouldInvalidateCookieAfterUrlFailure } from './store.js'
+import { describe, expect, it, vi } from 'vitest'
+import store, { selectActiveCookie, selectFmCookie, selectCookieForQuality, selectRequestCookie } from './store.js'
 
 const cookie = (note, userInfo = {}, updatedAt = 1) => ({ note, userInfo, updatedAt })
 
@@ -54,27 +54,28 @@ describe('Meting 全局 Cookie 优先级', () => {
         expect(selectRequestCookie(explicitCookie, fmCookie)).toBe(explicitCookie)
     })
 
-    it('SVIP 音质连续获取失败且使用存储账号时标记为需要重新登录', () => {
-        expect(shouldInvalidateCookieAfterUrlFailure({
-            requiresSvip: true,
-            hasStoredCookie: true,
-            attempts: 2,
-            hasUrl: false,
-        })).toBe(true)
+    it('失败后只选择其他具备目标音质权限的账号，累计次数不禁用账号', async () => {
+        const fmCookie = { id: 'fm-test', platform: 'netease', isActive: true, isValid: true, userInfo: { canPlaySvip: true } }
+        const backup = { id: 'backup-test', platform: 'netease', isActive: true, isValid: true, userInfo: { canPlaySvip: true } }
+        const free = { id: 'free-test', platform: 'netease', isActive: true, isValid: true, userInfo: { canPlaySvip: false } }
+        const getCookies = vi.spyOn(store, 'getCookies').mockReturnValue([fmCookie, backup, free])
+        const saveToFile = vi.spyOn(store, 'saveToFile').mockResolvedValue()
+        store.cookies.set(fmCookie.id, fmCookie)
+        try {
+            expect(store.getFallbackCookieForQuality('netease', 'sky', fmCookie.id)).toBe(backup)
+            getCookies.mockReturnValue([fmCookie, free])
+            expect(store.getFallbackCookieForQuality('netease', 'sky', fmCookie.id)).toBeNull()
+            await store.recordCookieUrlFailure(fmCookie.id)
+            await store.recordCookieUrlFailure(fmCookie.id)
+            expect(fmCookie.urlErrorCount).toBe(2)
+            expect(fmCookie.isValid).toBe(true)
+            expect(fmCookie.isActive).toBe(true)
+            expect(saveToFile).toHaveBeenCalledTimes(2)
+        } finally {
+            store.cookies.delete(fmCookie.id)
+            getCookies.mockRestore()
+            saveToFile.mockRestore()
+        }
     })
 
-    it('显式 Cookie 或未达到重试次数时不标记账号失效', () => {
-        expect(shouldInvalidateCookieAfterUrlFailure({
-            requiresSvip: true,
-            hasStoredCookie: false,
-            attempts: 2,
-            hasUrl: false,
-        })).toBe(false)
-        expect(shouldInvalidateCookieAfterUrlFailure({
-            requiresSvip: true,
-            hasStoredCookie: true,
-            attempts: 1,
-            hasUrl: false,
-        })).toBe(false)
-    })
 })

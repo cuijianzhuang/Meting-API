@@ -1,7 +1,7 @@
 import Providers from "../providers/index.js"
 import { format as lyricFormat, get_url } from "../util.js"
 import { wrapQishuiPlayPayload } from "../providers/qishui/audio.js"
-import store, { selectRequestCookie, shouldInvalidateCookieAfterUrlFailure } from "../admin/store.js"
+import store, { selectRequestCookie } from "../admin/store.js"
 import { isValidQuality, getQualityName, buildUrlPayload } from "../quality.js"
 import { resolveQishuiSignerUrl } from './qishui-signer-config.js'
 import config from '../config.js'
@@ -18,6 +18,7 @@ export default async (ctx) => {
     const quality = query.quality?.toLowerCase()
     const wantRedirect = query.redirect === '1' || query.redirect === 'true'
     const explicitCookie = String(ctx.req.header('X-OpenMusic-Cookie') || '').trim()
+    const fmUrl = type === 'url' && query.fm === '1' && !explicitCookie
 
     if (!p.get_provider_list().includes(server) || !p.get(server).support_type.includes(type)) {
         ctx.status(400)
@@ -53,13 +54,11 @@ export default async (ctx) => {
         }))
     }
     const requiresSvip = type === 'url' && Boolean(quality) && store.isQualityRequiresSvip(quality, server)
-    let providerAttempts = 0
     let data
     try {
-        providerAttempts += 1
         data = await p.get(server).handle(type, id, cookie, { quality, signerUrl })
     } catch (error) {
-        if (!requiresSvip || !storedCookie) throw error
+        if ((!requiresSvip && !fmUrl) || !storedCookie) throw error
     }
 
     if (type === 'url') {
@@ -69,27 +68,32 @@ export default async (ctx) => {
             : data
 
         let url = payload?.url || ''
-        if (!url && requiresSvip && storedCookie) {
+        if (!url && fmUrl && storedCookie) {
+            await store.recordCookieUrlFailure(storedCookie.id)
+            const fallbackCookie = store.getFallbackCookieForQuality(server, quality || 'standard', storedCookie.id)
+            if (fallbackCookie) {
+                storedCookie = fallbackCookie
+                cookie = fallbackCookie.cookie
+                try {
+                    data = await p.get(server).handle(type, id, cookie, { quality, signerUrl })
+                    payload = typeof data === 'string'
+                        ? buildUrlPayload(data, quality || 'standard', quality || 'standard', server)
+                        : data
+                    url = payload?.url || ''
+                } catch {}
+                if (!url) await store.recordCookieUrlFailure(fallbackCookie.id)
+            }
+        } else if (!url && requiresSvip && storedCookie) {
             try {
-                providerAttempts += 1
                 data = await p.get(server).handle(type, id, cookie, { quality, signerUrl })
                 payload = typeof data === 'string'
                     ? buildUrlPayload(data, quality || 'standard', quality || 'standard', server)
                     : data
                 url = payload?.url || ''
-            } catch {
-                providerAttempts += 1
-            }
+            } catch {}
         }
+        if (!url && !fmUrl && storedCookie) await store.recordCookieUrlFailure(storedCookie.id)
         if (!url) {
-            if (shouldInvalidateCookieAfterUrlFailure({
-                requiresSvip,
-                hasStoredCookie: Boolean(storedCookie),
-                attempts: providerAttempts,
-                hasUrl: false,
-            })) {
-                await store.invalidateCookie(storedCookie.id)
-            }
             console.warn('[Meting] no url', JSON.stringify({
                 server,
                 type,
