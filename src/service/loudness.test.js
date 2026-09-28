@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { fetchAuxiliaryLoudness, needsStandardLoudnessUrl } from './loudness.js'
+import { fetchAuxiliaryLoudness, needsStandardLoudnessUrl, shouldFetchAuxiliaryLoudness } from './loudness.js'
 
 describe('auxiliary loudness service', () => {
+    it('skips analysis for redirects because a 302 cannot return loudness', () => {
+        expect(shouldFetchAuxiliaryLoudness('http://localhost:3100/analyze', true)).toBe(false)
+        expect(shouldFetchAuxiliaryLoudness('http://localhost:3100/analyze', false)).toBe(true)
+    })
+
     it('uses a separate standard URL for non-standard user quality', () => {
         expect(needsStandardLoudnessUrl('flac')).toBe(true)
         expect(needsStandardLoudnessUrl('standard')).toBe(false)

@@ -5,6 +5,8 @@ export const needsStandardLoudnessUrl = (requestedQuality) => {
     return Boolean(quality && !['standard', '128'].includes(quality))
 }
 
+export const shouldFetchAuxiliaryLoudness = (serviceUrl, redirect) => Boolean(serviceUrl && !redirect)
+
 export const fetchAuxiliaryLoudness = async ({ serviceUrl, audioUrl, songId, fetchImpl = fetch, timeoutMs = 10_000 }) => {
     if (!serviceUrl || !audioUrl) return undefined
     try {
