@@ -594,6 +594,7 @@ class DataStore {
         const updatedCookie = {
             ...cookie,
             ...updates,
+            ...(updates.cookie && updates.cookie !== cookie.cookie ? { urlErrorCount: 0, lastFailedSongmid: '', tencentVerificationSongmid: '' } : {}),
             updatedAt: Date.now()
         }
         
@@ -690,10 +691,23 @@ class DataStore {
         return selectActiveCookie(cookies)
     }
 
-    async recordCookieUrlFailure(id) {
+    async recordCookieUrlFailure(id, songmid = '', verificationRequired = false) {
         const cookie = this.cookies.get(id)
         if (!cookie) return
         cookie.urlErrorCount = (cookie.urlErrorCount || 0) + 1
+        if (cookie.platform === 'tencent' && songmid) {
+            cookie.lastFailedSongmid = songmid
+            if (verificationRequired) cookie.tencentVerificationSongmid = songmid
+        }
+        await this.saveToFile()
+    }
+
+    async recordCookieUrlSuccess(id) {
+        const cookie = this.cookies.get(id)
+        if (!cookie || cookie.platform !== 'tencent' || (!cookie.urlErrorCount && !cookie.lastFailedSongmid && !cookie.tencentVerificationSongmid)) return
+        cookie.urlErrorCount = 0
+        cookie.lastFailedSongmid = ''
+        cookie.tencentVerificationSongmid = ''
         await this.saveToFile()
     }
 

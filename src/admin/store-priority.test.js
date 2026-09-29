@@ -78,4 +78,20 @@ describe('Meting 全局 Cookie 优先级', () => {
         }
     })
 
+    it('keeps Tencent slider status across requests and clears it after playback succeeds', async () => {
+        const account = { id: 'tencent-slider-test', platform: 'tencent', cookie: 'uin=123;qqmusic_key=test', urlErrorCount: 2 }
+        const save = vi.spyOn(store, 'saveToFile').mockResolvedValue()
+        store.cookies.set(account.id, account)
+        try {
+            await store.recordCookieUrlFailure(account.id, '0010BrWk2SucQr', true)
+            expect(account).toMatchObject({ urlErrorCount: 3, lastFailedSongmid: '0010BrWk2SucQr', tencentVerificationSongmid: '0010BrWk2SucQr' })
+            expect(save).toHaveBeenCalled()
+            await store.recordCookieUrlSuccess(account.id)
+            expect(account).toMatchObject({ urlErrorCount: 0, lastFailedSongmid: '', tencentVerificationSongmid: '' })
+        } finally {
+            store.cookies.delete(account.id)
+            save.mockRestore()
+        }
+    })
+
 })

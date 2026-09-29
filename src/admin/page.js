@@ -995,9 +995,10 @@ const getAdminHtml = () => `<!DOCTYPE html>
 
                 <div class="content-section" id="cookiesSection">
                     <div class="card" id="tencentVerifyBanner" role="status" style="display:none;padding:16px;margin-bottom:16px;border:1px solid var(--warning);">
-                        <strong>QQ 音乐需要滑块验证</strong>
+                        <strong id="tencentVerifyHeading">QQ 音乐需要滑块验证</strong>
                         <p id="tencentVerifyMessage" style="margin:8px 0;color:var(--text-secondary);"></p>
-                        <p style="margin-bottom:12px;color:var(--text-secondary);font-size:13px;">在服务端浏览器中使用当前 Cookie 打开官方验证页。请在弹窗中手动拖动滑块，完成后重试播放。</p>
+                        <div class="form-group" id="tencentVerifySongGroup" style="display:none;max-width:360px;margin:8px 0 12px;"><label for="tencentVerifySongmid">歌曲 ID</label><input id="tencentVerifySongmid" type="text" placeholder="输入遇到播放失败的 QQ 音乐歌曲 ID"></div>
+                        <p style="margin-bottom:12px;color:var(--text-secondary);font-size:13px;">点击时会重新获取短期有效的验证页面，并在服务端浏览器中带当前 Cookie 打开；若未出现滑块，可能是歌曲权限等其他原因。</p>
                         <div class="actions">
                             <button type="button" class="btn btn-warning btn-sm" onclick="openTencentVerification()">打开滑块验证</button>
                             <button type="button" class="btn btn-default btn-sm" id="tencentVerifyRetry" onclick="retryTencentVerification()">完成后重试</button>
@@ -1727,7 +1728,9 @@ const getAdminHtml = () => `<!DOCTYPE html>
             tencentVerificationId = pending?.id || '';
             banner.style.display = pending ? 'block' : 'none';
             if (!pending) return;
-            document.getElementById('tencentVerifyMessage').textContent = '歌曲 ' + pending.songmid + ' 触发验证。';
+            document.getElementById('tencentVerifyHeading').textContent = pending.confirmed ? 'QQ 音乐需要滑块验证' : 'QQ 音乐 URL 多次获取失败，可能需要验证';
+            document.getElementById('tencentVerifyMessage').textContent = pending.songmid ? '歌曲 ' + pending.songmid + (pending.confirmed ? ' 触发验证。' : ' 连续获取失败。') : '旧记录未保存歌曲 ID，请填写一首播放失败的歌曲。';
+            document.getElementById('tencentVerifySongGroup').style.display = pending.songmid ? 'none' : 'block';
         };
 
         const refreshTencentVerificationFrame = async () => {
@@ -1757,7 +1760,8 @@ const getAdminHtml = () => `<!DOCTYPE html>
         const openTencentVerification = async () => {
             if (!tencentVerificationId) return;
             document.getElementById('tencentVerifyStatus').textContent = '正在加载官方验证页面…';
-            const res = await api('/admin/cookies/' + encodeURIComponent(tencentVerificationId) + '/verification/start', { method: 'POST' });
+            const songmid = document.getElementById('tencentVerifySongmid').value.trim();
+            const res = await api('/admin/cookies/' + encodeURIComponent(tencentVerificationId) + '/verification/start', { method: 'POST', body: JSON.stringify({ songmid }) });
             if (!res?.success) { showToast(res?.error || '验证窗口打开失败', 'error'); return; }
             document.getElementById('tencentVerifyModal').classList.add('show');
             await refreshTencentVerificationFrame();

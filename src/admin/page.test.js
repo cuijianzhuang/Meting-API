@@ -13,5 +13,6 @@ it('renders a Tencent verification prompt in Cookie management', () => {
     expect(html).toContain('id="tencentVerifyModal"')
     expect(html).toContain('id="tencentVerifyImage"')
     expect(html).toContain('id="tencentVerifyRetry"')
+    expect(html).toContain('id="tencentVerifySongmid"')
     expect(html).not.toContain('id="tencentVerifyLink"')
 })

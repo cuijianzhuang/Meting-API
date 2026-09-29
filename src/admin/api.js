@@ -116,9 +116,10 @@ export const adminRoutes = (app) => {
     })
 
     app.get('/admin/cookies/tencent-verifications', authMiddleware, adminMiddleware, (c) => {
-        const data = store.getCookies('tencent').flatMap(({ id, cookie }) => {
+        const data = store.getCookies('tencent').flatMap(({ id, cookie, tencentVerificationSongmid, lastFailedSongmid, urlErrorCount }) => {
             const pending = getTencentVerification(cookie)
-            return pending ? [{ id, songmid: pending.songmid }] : []
+            if (!pending && !tencentVerificationSongmid && (urlErrorCount || 0) < 3) return []
+            return [{ id, songmid: pending?.songmid || tencentVerificationSongmid || lastFailedSongmid || '', confirmed: Boolean(pending || tencentVerificationSongmid) }]
         })
         c.header('Cache-Control', 'no-store')
         return c.json({ success: true, data })
@@ -127,8 +128,24 @@ export const adminRoutes = (app) => {
     app.post('/admin/cookies/:id/verification/start', authMiddleware, adminMiddleware, async (c) => {
         const id = c.req.param('id')
         const cookie = store.getCookie(id)
-        const pending = cookie?.platform === 'tencent' && getTencentVerification(cookie.cookie)
-        if (!pending) return c.json({ success: false, error: '验证已过期，请重新播放歌曲' }, 404)
+        if (cookie?.platform !== 'tencent') return c.json({ success: false, error: 'QQ 音乐 Cookie 不存在' }, 404)
+        let pending = getTencentVerification(cookie.cookie)
+        if (!pending) {
+            if (!cookie.tencentVerificationSongmid && (cookie.urlErrorCount || 0) < 3) return c.json({ success: false, error: '当前账号无需验证' }, 400)
+            const body = await c.req.json().catch(() => ({}))
+            const songmid = cookie.tencentVerificationSongmid || cookie.lastFailedSongmid || String(body.songmid || '').trim()
+            if (!/^[A-Za-z0-9]{1,64}$/.test(songmid)) return c.json({ success: false, error: '请输入需要播放的 QQ 音乐歌曲 ID' }, 400)
+            try {
+                const data = await get_song_url(songmid, cookie.cookie, { quality: 'standard' })
+                if (data?.url) {
+                    await store.recordCookieUrlSuccess(id)
+                    return c.json({ success: false, error: '播放链接已恢复，无需滑块验证' }, 400)
+                }
+                pending = getTencentVerification(cookie.cookie)
+                if (pending) await store.recordCookieUrlFailure(id, songmid, true)
+            } catch {}
+            if (!pending) return c.json({ success: false, error: 'QQ 音乐未返回滑块验证，请检查歌曲权限或稍后重试' }, 400)
+        }
         try {
             await startTencentVerification(id, cookie.cookie, pending.validUrl)
             return c.json({ success: true })
@@ -164,10 +181,14 @@ export const adminRoutes = (app) => {
         const cookie = store.getCookie(c.req.param('id'))
         if (cookie?.platform !== 'tencent') return c.json({ success: false, error: 'QQ 音乐 Cookie 不存在' }, 404)
         const pending = getTencentVerification(cookie.cookie)
-        if (!pending) return c.json({ success: false, error: '验证链接已过期，请重新播放歌曲' }, 404)
+        const songmid = pending?.songmid || cookie.tencentVerificationSongmid || cookie.lastFailedSongmid
+        if (!songmid) return c.json({ success: false, error: '请输入歌曲 ID 并先打开滑块验证' }, 400)
         try {
-            const data = await get_song_url(pending.songmid, cookie.cookie, { quality: 'standard' })
-            if (data?.url) await closeTencentVerification(cookie.id)
+            const data = await get_song_url(songmid, cookie.cookie, { quality: 'standard' })
+            if (data?.url) {
+                await store.recordCookieUrlSuccess(cookie.id)
+                await closeTencentVerification(cookie.id)
+            } else await store.recordCookieUrlFailure(cookie.id, songmid, Boolean(getTencentVerification(cookie.cookie)))
             return c.json({ success: Boolean(data?.url), error: data?.url ? undefined : '仍需验证，请确认滑块已完成后重试' })
         } catch {
             return c.json({ success: false, error: '播放重试失败，请稍后再试' }, 502)

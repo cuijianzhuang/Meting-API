@@ -34,7 +34,7 @@ it('opens a Cookie-bound verification browser only for an authenticated admin', 
     expect((await app.request('/admin/cookies/tencent-verifications')).status).toBe(401)
     const response = await app.request('/admin/cookies/tencent-verifications', { headers: { 'X-Auth-Username': 'admin', 'X-Auth-Token': 'test' } })
     expect(response.status).toBe(200)
-    expect((await response.json()).data).toEqual([{ id: 'account-1', songmid: '0010BrWk2SucQr' }])
+    expect((await response.json()).data).toEqual([{ id: 'account-1', songmid: '0010BrWk2SucQr', confirmed: true }])
 
     vi.spyOn(store, 'getCookie').mockReturnValue({ id: 'account-1', platform: 'tencent', cookie })
     const headers = { 'X-Auth-Username': 'admin', 'X-Auth-Token': 'test' }
@@ -51,4 +51,26 @@ it('opens a Cookie-bound verification browser only for an authenticated admin', 
         .mockResolvedValueOnce({ status: 206 })
     expect(await (await app.request('/admin/cookies/account-1/retry-play', { method: 'POST', headers })).json()).toEqual({ success: true })
     expect((await (await app.request('/admin/cookies/tencent-verifications', { headers })).json()).data).toEqual([])
+})
+
+it('restores a three-failure prompt after the short-lived challenge expires and refreshes it on demand', async () => {
+    const cookie = 'uin=998;qqmusic_key=PRIVATE_COOKIE'
+    const account = { id: 'old-account', platform: 'tencent', cookie, urlErrorCount: 3 }
+    vi.spyOn(store, 'getCookies').mockReturnValue([account])
+    vi.spyOn(store, 'getCookie').mockReturnValue(account)
+    vi.spyOn(store, 'validateToken').mockReturnValue(true)
+    vi.spyOn(store.users, 'get').mockReturnValue({ role: 'admin' })
+    const app = new Hono()
+    adminRoutes(app)
+    const headers = { 'X-Auth-Username': 'admin', 'X-Auth-Token': 'test' }
+    expect((await (await app.request('/admin/cookies/tencent-verifications', { headers })).json()).data).toEqual([{ id: 'old-account', songmid: '', confirmed: false }])
+
+    vi.stubGlobal('fetch', vi.fn()
+        .mockResolvedValueOnce({ json: async () => ({ songinfo: { data: { track_info: { file: { media_mid: 'media', size_128mp3: 1 } } } } }) })
+        .mockResolvedValueOnce({ json: async () => ({ req_0: { code: 104009, data: { validUrl: 'https://c.y.qq.com/r/fy6U?tokenValid=FRESH', midurlinfo: [{ purl: '' }] } } }) }))
+    const response = await app.request('/admin/cookies/old-account/verification/start', {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ songmid: '0010BrWk2SucQr' }),
+    })
+    expect(response.status).toBe(200)
+    expect(startTencentVerification).toHaveBeenCalledWith('old-account', cookie, 'https://c.y.qq.com/r/fy6U?tokenValid=FRESH')
 })

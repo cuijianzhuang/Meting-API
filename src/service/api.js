@@ -1,4 +1,5 @@
 import Providers from "../providers/index.js"
+import { getTencentVerification } from '../providers/tencent/song.js'
 import { format as lyricFormat, get_url } from "../util.js"
 import { wrapQishuiPlayPayload } from "../providers/qishui/audio.js"
 import store, { selectRequestCookie } from "../admin/store.js"
@@ -69,7 +70,7 @@ export default async (ctx) => {
 
         let url = payload?.url || ''
         if (!url && fmUrl && storedCookie) {
-            await store.recordCookieUrlFailure(storedCookie.id)
+            await store.recordCookieUrlFailure(storedCookie.id, id, server === 'tencent' && Boolean(getTencentVerification(cookie)))
             const fallbackCookie = store.getFallbackCookieForQuality(server, quality || 'standard', storedCookie.id)
             if (fallbackCookie) {
                 storedCookie = fallbackCookie
@@ -81,7 +82,7 @@ export default async (ctx) => {
                         : data
                     url = payload?.url || ''
                 } catch {}
-                if (!url) await store.recordCookieUrlFailure(fallbackCookie.id)
+                if (!url) await store.recordCookieUrlFailure(fallbackCookie.id, id, server === 'tencent' && Boolean(getTencentVerification(cookie)))
             }
         } else if (!url && requiresSvip && storedCookie) {
             try {
@@ -92,7 +93,7 @@ export default async (ctx) => {
                 url = payload?.url || ''
             } catch {}
         }
-        if (!url && !fmUrl && storedCookie) await store.recordCookieUrlFailure(storedCookie.id)
+        if (!url && !fmUrl && storedCookie) await store.recordCookieUrlFailure(storedCookie.id, id, server === 'tencent' && Boolean(getTencentVerification(cookie)))
         if (!url) {
             console.warn('[Meting] no url', JSON.stringify({
                 server,
@@ -115,6 +116,7 @@ export default async (ctx) => {
         if (url.startsWith('@')) {
             return ctx.text(url)
         }
+        if (server === 'tencent' && storedCookie) await store.recordCookieUrlSuccess(storedCookie.id)
 
         const loudnessServiceUrl = resolveLoudnessServiceUrl(store.getLoudnessServiceUrl(), config.LOUDNESS_SERVICE_URL)
         if (shouldFetchAuxiliaryLoudness(loudnessServiceUrl, wantRedirect)) {
